@@ -1,0 +1,54 @@
+%%  =========================================================
+%%  Sobrevivência — Arquitetura de Entrada (Mermaid)
+%%  Atualização: 15/05/2026
+%%  Arquiteto: Antigravity (AI Senior Dev)
+%%  =========================================================
+%%
+%%  LEGENDA DE ÍCONES (usados nos labels):
+%%    [EP]  Entry Point / Game Loop
+%%    [IM]  Input Manager
+%%    [MC]  Menu Controller
+%%
+%%  =========================================================
+
+graph TD
+    ROOT["📄 main.py
+    [EP] SobrevivenciaGame
+    Loop Principal (Pygame)
+    • Roda o game loop de 60 FPS
+    • Desenha a UI (virtual_screen)
+    • Passa eventos para as lógicas apropriadas
+    • Herda via Mixins para acessar Controllers"]
+
+    INPUT_DIR["📁 input/"]
+    CTRL_DIR["📁 controllers/"]
+
+    ROOT -.-> INPUT_DIR
+    ROOT -.-> CTRL_DIR
+
+    INPUT_DIR --> INPUT["📄 input_manager.py
+    [IM] InputManager (Mixin)
+    Tratamento de Controles Físicos:
+    • Joystick / Gamepad (direcionais, deadzone)
+    • Teclado (bindings, menus, direções)
+    • Detecção automática de Mouse vs Controller
+    • Mapeamento padronizado de Ações"]
+
+    CTRL_DIR --> CTRL["📄 menu_controller.py
+    [MC] MenuController (Mixin)
+    Tratamento de Telas Lógicas:
+    • Lógica dos Menus (Inventário, Skills, Pausa)
+    • Handlers de confirmação de Fusão e Pontos
+    • Seleção de Personagens e Lojinhas"]
+
+    INPUT -- "Herdado por" --> ROOT
+    CTRL -- "Herdado por" --> ROOT
+
+    %% ── ESTILOS ────────────────────────────────────────────
+    classDef rootNode  fill:#0f172a,stroke:#cbd5e1,color:#f1f5f9
+    classDef dirNode fill:#1e3a5f,stroke:#38bdf8,color:#e0f2fe
+    classDef mixinNode fill:#2d1b4e,stroke:#a78bfa,color:#ede9fe
+
+    class ROOT rootNode
+    class INPUT_DIR,CTRL_DIR dirNode
+    class INPUT,CTRL mixinNode

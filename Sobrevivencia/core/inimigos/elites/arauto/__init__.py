@@ -1,0 +1,2 @@
+"""Arauto do Fim behavior."""
+

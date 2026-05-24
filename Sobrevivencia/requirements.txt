@@ -1,0 +1,16 @@
+pygame-ce>=2.5
+
+# UI e game feel leves/recomendados
+pygame_gui>=0.6
+pygame-menu>=4.4
+pytweening>=1.2
+loguru>=0.7
+
+# Opcionais de performance/conteudo
+numpy>=1.26
+pymunk>=6.8
+pytmx>=3.32
+
+# Experimentais: o jogo possui fallback quando ausentes
+moderngl>=5.10
+numba>=0.60

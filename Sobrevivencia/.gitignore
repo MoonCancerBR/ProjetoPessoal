@@ -1,0 +1,78 @@
+# ==============================================================================
+# .gitignore - Sobrevivência (Pygame Game Project)
+# ==============================================================================
+
+# --- Python - Compilação e Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+native_core/build/
+*.pyd
+*.dll
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Ambientes Virtuais (Virtual Environments) ---
+.venv/
+venv/
+ENV/
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Logs e Arquivos Dinâmicos / Temporários ---
+game.log
+*.log
+tools/profiler_report*.txt
+crash_reports/
+# Pasta para rascunhos de desenvolvimento temporários e capturas de tela locais
+scratch/
+
+# --- Editores de Código / IDEs ---
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm / JetBrains
+.idea/
+
+# Outros editores comuns
+*~
+*.swp
+*.swo
+.project
+.pydevproject
+
+# --- Arquivos do Sistema Operacional ---
+# Windows
+Thumbs.db
+db.properties
+Desktop.ini
+ehthumbs.db
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*

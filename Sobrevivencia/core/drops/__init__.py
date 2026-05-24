@@ -1,0 +1,2 @@
+"""Drop domain package."""
+

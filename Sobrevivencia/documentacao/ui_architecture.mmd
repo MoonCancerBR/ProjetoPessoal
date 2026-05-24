@@ -1,0 +1,75 @@
+%%  =========================================================
+%%  Sobrevivência — Arquitetura de UI (Mermaid)
+%%  Atualização: 15/05/2026
+%%  Arquiteto: Antigravity (AI Senior Dev)
+%%  =========================================================
+%%
+%%  LEGENDA DE ÍCONES (usados nos labels):
+%%    [UI]  Main UI Class
+%%    [HUD] Hud Menu
+%%    [INV] Inventory Menu
+%%    [SHP] Shop Menus
+%%    [SYS] System Menus
+%%    [UIM] UI Component Factory
+%%    [IG]  Inventory GUI
+%%
+%%  =========================================================
+
+graph TD
+    ROOT["📄 presentation/ui.py
+    [UI] Classe Principal (Renderização in-game)
+    • Desenha o Terreno, Entidades, Tiros, Hazards
+    • Converte screen_to_world e world_to_screen
+    • Herda via Mixins para desenhar Menus e HUD"]
+
+    MENUS_DIR["📁 presentation/menus/"]
+    ROOT -.-> MENUS_DIR
+
+    MENUS_DIR --> HUD["📄 hud.py
+    [HUD] HudMenu (Mixin)
+    • Desenha o HUD Singleplayer e Coop
+    • Barras de vida, especial, XP, buffs passivos"]
+
+    MENUS_DIR --> INV["📄 inventory_menu.py
+    [INV] InventoryMenu (Mixin)
+    • Desenha telas legacy (se houver) e base
+    • Telas de confirmação de Fusão e Confirmação de Pontos"]
+
+    MENUS_DIR --> IG["📄 inventory_gui.py
+    [IG] InventoryGUI (Herda de InventoryMenu)
+    • Integra o inventário legadão ao pygame_gui
+    • Renderiza a aba de itens e aba do Mercado Negro"]
+
+    MENUS_DIR --> SHP["📄 shop_menus.py
+    [SHP] ShopMenus (Mixin)
+    • Desenha a Loja de Status e Upgrades
+    • Árvore de Construções e Árvore de Skills com pygame_gui"]
+
+    MENUS_DIR --> SYS["📄 system_menus.py
+    [SYS] SystemMenus (Mixin)
+    • Telas modais: Início, Seleção de Personagem, Modo
+    • Pausa, Game Over, Controles e Configurações via pygame_gui"]
+
+    MENUS_DIR --> UIC["📄 ui_components.py
+    [UIM] UIComponentFactory
+    • Embrulha o pygame_gui.UIManager
+    • Instancia botões modulares, superfícies de imagem e painéis"]
+
+    HUD -- "Herdado por" --> ROOT
+    INV -- "Herdado por" --> IG
+    IG -- "Herdado por" --> ROOT
+    SHP -- "Herdado por" --> ROOT
+    SYS -- "Herdado por" --> ROOT
+    UIC -- "Gerencia" --> IG
+    UIC -- "Gerencia" --> SHP
+    UIC -- "Gerencia" --> SYS
+    %% ── ESTILOS ────────────────────────────────────────────
+    classDef rootNode  fill:#0f172a,stroke:#cbd5e1,color:#f1f5f9
+    classDef dirNode fill:#1e3a5f,stroke:#38bdf8,color:#e0f2fe
+    classDef mixinNode fill:#3b1f1f,stroke:#f87171,color:#fee2e2
+    classDef guiNode fill:#4c1d95,stroke:#a78bfa,color:#ede9fe
+
+    class ROOT rootNode
+    class MENUS_DIR dirNode
+    class HUD,INV,SHP,SYS mixinNode
+    class IG,UIC guiNode

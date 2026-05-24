@@ -1,0 +1,88 @@
+%%  =========================================================
+%%  Sobrevivência — Arquitetura da GameLogic (Mermaid)
+%%  Atualização: 15/05/2026
+%%  Arquiteto: Antigravity (AI Senior Dev)
+%%  =========================================================
+%%
+%%  LEGENDA DE ÍCONES (usados nos labels):
+%%    [GL]  GameLogic Base
+%%    [CM]  Combat Manager
+%%    [EM]  Enemy Manager
+%%    [IM]  Item Manager
+%%    [QM]  Quest Manager
+%%    [BA]  Buff Applicator
+%%
+%%  =========================================================
+
+graph TD
+    ROOT["📄 core/game_logic.py
+    [GL] GameLogic (Hub Central)
+    Classe principal que atua como Fachada (Facade).
+    Mantém o estado (world, players, entities, timers).
+    Delega comportamentos específicos herdando dos Managers (Mixins)."]
+
+    %% ── MANAGERS ──────────────────────────────────────────────
+    MANAGERS["📁 core/managers/"]
+    ROOT -.-> MANAGERS
+
+    MANAGERS --> COMBAT["📄 combat_manager.py
+    [CM] CombatManager
+    Responsável por:
+    • Danos, recargas e tiros (projectiles)
+    • Golpes corpo a corpo (slashes)
+    • Dash e invulnerabilidade
+    • Especiais e Combos"]
+
+    MANAGERS --> ENEMY["📄 enemy_manager.py
+    [EM] EnemyManager
+    Responsável por:
+    • Spawns normais e de Elite/Miniboss
+    • Movimentação e repulsão (knockback)
+    • IA específica (Cromático, Spitter, Boss)
+    • Game Director (escalonamento de dificuldade)"]
+
+    MANAGERS --> ITEM["📄 item_manager.py
+    [IM] ItemManager
+    Responsável por:
+    • Drops e magnetismo de itens
+    • Loja de Status, Upgrades e Skills
+    • Fusão de Itens (Mark, Preview, Confirm)
+    • Ganho de XP e Level Up"]
+
+    MANAGERS --> QUEST["📄 quest_manager.py
+    [QM] QuestManager
+    Responsável por:
+    • Sorteio de missões ativas
+    • Falhas e recompensas
+    • Timers de Quests"]
+
+    MANAGERS --> BUFF["📄 buff_applicator.py
+    [BA] BuffApplicator
+    Responsável por:
+    • Cálculo de escala de níveis
+    • Injeção de status base no Player
+    • Acúmulo de bônus do inventário"]
+
+    %% ── RELACIONAMENTOS (Mixins) ──────────────────────────────
+    COMBAT -- "Herdado por" --> ROOT
+    ENEMY -- "Herdado por" --> ROOT
+    ITEM -- "Herdado por" --> ROOT
+    QUEST -- "Herdado por" --> ROOT
+    BUFF -- "Injetado no" --> ROOT
+
+    %% ── ESTILOS ────────────────────────────────────────────
+    classDef rootNode  fill:#0f172a,stroke:#cbd5e1,color:#f1f5f9
+    classDef managerDir fill:#1e3a5f,stroke:#38bdf8,color:#e0f2fe
+    classDef combatNode fill:#3b1f1f,stroke:#f87171,color:#fee2e2
+    classDef enemyNode fill:#2a2000,stroke:#fbbf24,color:#fef9c3
+    classDef itemNode fill:#1a3322,stroke:#4ade80,color:#dcfce7
+    classDef questNode fill:#2d1b4e,stroke:#a78bfa,color:#ede9fe
+    classDef buffNode fill:#1a2333,stroke:#60a5fa,color:#e0f2fe
+
+    class ROOT rootNode
+    class MANAGERS managerDir
+    class COMBAT combatNode
+    class ENEMY enemyNode
+    class ITEM itemNode
+    class QUEST questNode
+    class BUFF buffNode

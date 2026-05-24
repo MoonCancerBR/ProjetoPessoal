@@ -1,0 +1,13 @@
+{
+  "move_up": ["keyboard:w", "keyboard:up"],
+  "move_down": ["keyboard:s", "keyboard:down"],
+  "move_left": ["keyboard:a", "keyboard:left"],
+  "move_right": ["keyboard:d", "keyboard:right"],
+  "dash": ["keyboard:space"],
+  "special": ["keyboard:e"],
+  "combo_special": ["keyboard:r"],
+  "inventory": ["keyboard:i", "keyboard:tab"],
+  "skills": ["keyboard:k"],
+  "pause": ["keyboard:escape"],
+  "fullscreen": ["keyboard:f11"]
+}

@@ -1,0 +1,2 @@
+"""Altar domain package."""
+

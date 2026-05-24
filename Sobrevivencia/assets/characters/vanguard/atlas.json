@@ -1,0 +1,13 @@
+{
+  "default_duration": 0.12,
+  "frames": {
+    "idle_0": {
+      "frame": {"x": 0, "y": 0, "w": 64, "h": 64},
+      "duration": 0.12
+    },
+    "idle_1": {
+      "frame": {"x": 64, "y": 0, "w": 64, "h": 64},
+      "duration": 0.12
+    }
+  }
+}

@@ -1,0 +1,2 @@
+"""Stamp domain package."""
+

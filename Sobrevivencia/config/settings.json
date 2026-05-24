@@ -1,0 +1,9 @@
+{
+  "SCREEN_WIDTH": 1100,
+  "SCREEN_HEIGHT": 720,
+  "FPS": 60,
+  "fullscreen": false,
+  "master_volume": 0.8,
+  "music_volume": 0.6,
+  "sfx_volume": 0.8
+}

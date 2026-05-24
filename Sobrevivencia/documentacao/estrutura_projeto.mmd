@@ -1,0 +1,231 @@
+%%  =========================================================
+%%  Sobrevivência — Arquitetura de Diretórios (Mermaid)
+%%  Última atualização: 15/05/2026
+%%  Arquiteto: Antigravity (AI Senior Dev)
+%%  =========================================================
+%%
+%%  LEGENDA DE ÍCONES (usados nos labels):
+%%    [EP]  Entry Point
+%%    [CL]  Core / Logic
+%%    [CE]  Core / Entities
+%%    [CW]  Core / World
+%%    [DC]  Data / Constants
+%%    [DI]  Data / Items
+%%    [UI]  Presentation / UI
+%%    [AS]  Assets
+%%    [CF]  Config
+%%    [TL]  Tools
+%%    [DOC] Documentation
+%%
+%%  =========================================================
+
+graph TD
+    ROOT["📁 Sobrevivencia/
+    Raiz do projeto — pacote Python instalável"]
+
+    ROOT --> MAIN["📄 main.py
+    [EP] Loop principal, input handler e
+    state machine (menu → char select →
+    gameplay → pause → game over)"]
+
+    ROOT --> INIT_ROOT["📄 __init__.py
+    Entry point do pacote Python"]
+
+    ROOT --> GDD["📄 gdd_sobrevivencia.md
+    Game Design Document principal
+    (cópia canônica em /documentacao)"]
+
+    %% ── CORE ──────────────────────────────────────────────
+    ROOT --> CORE["📁 core/
+    Motor do jogo — lógica pura sem Pygame"]
+
+    CORE --> CORE_INIT["📄 __init__.py"]
+
+    CORE --> GAME_LOGIC["📄 game_logic.py
+    [CL] Toda a lógica de gameplay:
+    • Movimento, dash, knockback
+    • Combate ranged + melee (Tactical Swap)
+    • IA de inimigos (Errante, Corredor, Bruto,
+      Cromático, Spitter, Bulwark, Sapper,
+      Mini-boss, Servos)
+    • Sistema de especiais por arma + Combo
+    • Spawns, dificuldade e Game Director
+    • Progressão: XP, nível, passivas, omni
+    • Drop system (munição, cura, escudo, XP)
+    • Missões temporárias
+    • Modo coop: câmera dinâmica, tether,
+      draft de level-up, revive, input lock
+    • Gerenciamento de Skills e Loja de Status"]
+
+    CORE --> BUFF_APP["📄 managers/buff_applicator.py
+    [CE] Matemática central de injeção de itens
+    no status base dos jogadores"]
+
+    CORE --> ENTITIES["📄 entities.py
+    [CE] Dataclasses puras (sem lógica de jogo):
+    • Player — stats, armas, especiais, passivas
+    • Enemy — tipo, vida, status, pathfinding data
+    • Projectile — vetor, dano, flags especiais
+    • Slash — arco de golpe melee
+    • Drop — XP, moeda, cura, munição, escudo
+    • Hazard — fogo, gelo, mina
+    • Destructible — caixotes, caches"]
+
+    CORE --> WORLD["📄 world.py
+    [CW] Geração e gestão do mundo:
+    • Geração procedural de chunks (768 px)
+    • Hash determinístico para persistência
+    • Terrenos: grama, pedra, lama, areia
+    • Colisão círculo-retângulo
+    • Spawn de hazards e objetos destrutíveis"]
+
+    %% ── DATA ──────────────────────────────────────────────
+    ROOT --> DATA["📁 data/
+    Dados do jogo — fonte única da verdade"]
+
+    DATA --> DATA_INIT["📄 __init__.py"]
+
+    DATA --> CONSTANTS["📄 constants.py
+    [DC] Todas as constantes numéricas e dicionários:
+    • FPS, resolução, cores
+    • CHARACTERS: Vanguarda e Caçadora
+      (armas, passivas, especiais, omni upgrades)
+    • ENEMY_TYPES: stats base de cada inimigo
+    • TERRAIN_TYPES: cor e modificador de velocidade
+    • UPGRADES_COMMON, UPGRADES_OMNI
+    • RELIC_DEFINITIONS: árvore de fusões Tier 3
+    • Fórmulas de XP, cooldowns, balanceamento
+    • Game Director: intervalos e limites
+    • Drop rates de munição por tipo de inimigo"]
+
+    DATA --> CONSTANTS_BKP["📄 constants_backup.py
+    Snapshot de backup (gerado antes de refatorações)"]
+
+    DATA --> ITEMS["📄 items.py
+    [DI] Sistema de itens:
+    • ITEM_DEFINITIONS: 5 itens base com stats
+    • Classe Inventory: slots ativos + reserva
+    • Lógica de upgrade (rank 1→2→3, custo/nível)
+    • preview_fusion: identifica híbridos e relíquias
+    • confirm_fusion: consome pares e cria resultado
+    • Loja de Status: pool de ofertas e rerroll"]
+
+    %% ── PRESENTATION ──────────────────────────────────────
+    ROOT --> PRESENTATION["📁 presentation/
+    Camada de renderização — apenas Pygame draw"]
+
+    PRESENTATION --> PRES_INIT["📄 __init__.py"]
+
+    PRESENTATION --> UI["📄 ui.py
+    [UI] Hub principal de renderização:
+    • Loop de desenho do Terreno e Jogo
+    • Integra o HUD e repassa eventos ao pygame_gui"]
+
+    PRESENTATION --> MENUS_DIR["📁 menus/
+    [UI] Componentes Modulares e Telas:
+    • hud.py (Game HUD Overlay)
+    • ui_components.py (Design System Factory)
+    • shop_menus.py (Upgrades, Construções)
+    • inventory_gui.py (Inventário, Mercado Negro)
+    • system_menus.py (Start, Pause, Character)"]
+
+    %% ── ASSETS ────────────────────────────────────────────
+    ROOT --> ASSETS["📁 assets/
+    Recursos visuais e sonoros — sem lógica Python"]
+
+    ASSETS --> THEME["📄 theme.json
+    [AS] Tokens de UI (Cores, fontes, estilos)
+    utilizados pelo motor pygame_gui"]
+
+    ASSETS --> ITEMS_DIR["📁 items/
+    [AS] Ícones PNG dos itens passivos (32×32):
+    • blade_relay.png
+    • chrono_boots.png
+    • guardian_plate.png
+    • magnet_orb.png
+    • storm_core.png"]
+
+    ASSETS --> SPRITES["📁 sprites/
+    [AS] (planejado) Sprite sheets de personagens
+    e inimigos — PNG/atlas + JSON de frames"]
+
+    ASSETS --> SFX["📁 sfx/
+    [AS] (planejado) Efeitos sonoros:
+    • tiro, golpe, dash, pickup, fusão,
+      pente vazio, recarga, morte inimigo
+    Formato: .ogg / .wav"]
+
+    ASSETS --> BGM["📁 bgm/
+    [AS] (planejado) Trilhas de fundo por fase/bioma
+    Formato: .ogg (loop)"]
+
+    ASSETS --> FONTS["📁 fonts/
+    [AS] (planejado) Fontes customizadas .ttf
+    usadas pela camada presentation/ui.py"]
+
+    %% ── CONFIG ────────────────────────────────────────────
+    ROOT --> CONFIG["📁 config/
+    Configurações externas — editáveis sem IDE"]
+
+    CONFIG --> SETTINGS["📄 settings.json (planejado)
+    [CF] Resolução, fullscreen, volume SFX/BGM,
+    idioma, sensibilidade de mira"]
+
+    CONFIG --> BALANCE["📄 balance.json (planejado)
+    [CF] Stats de inimigos, dano, velocidade,
+    taxas de drop — tuning sem tocar em código"]
+
+    CONFIG --> KEYBINDS["📄 keybinds.json (planejado)
+    [CF] Mapeamento de teclas, mouse e gamepad
+    (salvo automaticamente ao remapear)"]
+
+    %% ── TOOLS ─────────────────────────────────────────────
+    ROOT --> TOOLS["📁 tools/
+    Scripts de desenvolvimento e performance"]
+
+    TOOLS --> PROFILER["📄 profiler.py (planejado)
+    [TL] Análise de FPS, tempo de update/render,
+    gargalos de spawn e colisão"]
+
+    TOOLS --> BAL_EDITOR["📄 balance_editor.py (planejado)
+    [TL] Editor GUI/CLI para balance.json
+    com preview de curvas de dificuldade"]
+
+    %% ── DOCUMENTAÇÃO ──────────────────────────────────────
+    ROOT --> DOCS["📁 documentacao/
+    [DOC] Documentação técnica e de design"]
+
+    DOCS --> THIS_FILE["📄 estrutura_projeto.mmd (este arquivo)
+    Diagrama Mermaid da árvore de diretórios
+    com responsabilidades de cada pasta"]
+
+    DOCS --> GDD_COPY["📄 gdd_sobrevivencia.md
+    Cópia canônica do Game Design Document:
+    • Visão geral e core loop
+    • Arsenal, munição e Tactical Swap
+    • Personagens (Vanguarda e Caçadora)
+    • Progressão, itens, fusões e relíquias
+    • Inimigos, spawns e Game Director
+    • Multiplayer coop (câmera, tether, draft)
+    • Arquitetura técnica e roadmap"]
+
+    %% ── ESTILOS ────────────────────────────────────────────
+    classDef entry    fill:#1e3a5f,stroke:#38bdf8,color:#e0f2fe
+    classDef coreNode fill:#1a3322,stroke:#4ade80,color:#dcfce7
+    classDef dataNode fill:#2d1b4e,stroke:#a78bfa,color:#ede9fe
+    classDef presNode fill:#3b1f1f,stroke:#f87171,color:#fee2e2
+    classDef assetNode fill:#2a2000,stroke:#fbbf24,color:#fef9c3
+    classDef cfgNode   fill:#1f2d2a,stroke:#34d399,color:#d1fae5
+    classDef toolNode  fill:#1e1e2e,stroke:#94a3b8,color:#e2e8f0
+    classDef docNode   fill:#1a1f3c,stroke:#818cf8,color:#e0e7ff
+    classDef rootNode  fill:#0f172a,stroke:#cbd5e1,color:#f1f5f9
+
+    class ROOT rootNode
+    class MAIN,INIT_ROOT,GDD entry
+    class CORE,CORE_INIT,GAME_LOGIC,BUFF_APP,ENTITIES,WORLD coreNode
+    class DATA,DATA_INIT,CONSTANTS,CONSTANTS_BKP,ITEMS dataNode
+    class PRESENTATION,PRES_INIT,UI,MENUS_DIR presNode
+    class ASSETS,ITEMS_DIR,SPRITES,SFX,BGM,FONTS assetNode
+    class CONFIG,SETTINGS,BALANCE,KEYBINDS cfgNode
+    class TOOLS,PROFILER,BAL_EDITOR toolNode
+    class DOCS,THIS_FILE,GDD_COPY docNode

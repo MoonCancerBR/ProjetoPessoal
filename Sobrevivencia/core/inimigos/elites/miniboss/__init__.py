@@ -1,0 +1,2 @@
+"""Colosso Errante behavior."""
+
