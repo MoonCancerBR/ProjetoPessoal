@@ -6,6 +6,9 @@ SCREEN_WIDTH = 1100
 SCREEN_HEIGHT = 720
 FPS = 60
 
+PIXEL_ART_MODE = True
+PIXEL_ART_DOWNSCALE = 2
+
 WORLD_TILE_SIZE = 96
 CHUNK_SIZE = 768
 VIEW_PADDING = 180
@@ -59,6 +62,7 @@ STAT_SHOP_UNLOCK_LEVEL = 1
 STAT_SHOP_ROLL_COST = 1
 STAT_SHOP_REROLL_COST = 1
 FUSION_COST = 3
+STAMP_RESERVE_LIMIT = 60
 
 STAT_SHOP_STATS = [
     {
@@ -202,53 +206,53 @@ REVIVE_RADIUS = 80
 REVIVE_TIME = 4.0
 REVIVE_HP_PERCENT = 0.5
 P1_AIM_COLOR = "#38BDF8"
-P2_AIM_COLOR = "#F87171"
+P2_AIM_COLOR = "#FF3B58"
 
 COLORS = {
-    "bg": "#07111E",
-    "panel": "#101927",
-    "panel_2": "#172033",
-    "text": "#F8FAFC",
-    "muted": "#94A3B8",
-    "muted_2": "#64748B",
-    "health": "#EF4444",
-    "health_bg": "#44151B",
-    "special": "#38BDF8",
-    "xp": "#22C55E",
-    "coin": "#FACC15",
-    "player": "#E2E8F0",
-    "player_core": "#38BDF8",
-    "projectile": "#67E8F9",
-    "projectile_freeze": "#BAE6FD",
-    "poison": "#86EFAC",
-    "sword": "#FDE68A",
-    "shield": "#60A5FA",
-    "danger": "#FB7185",
-    "upgrade": "#A78BFA",
+    "bg": "#05050A",
+    "panel": "#111827",
+    "panel_2": "#1B2440",
+    "text": "#FFF7D6",
+    "muted": "#A7B0C7",
+    "muted_2": "#5E6A86",
+    "health": "#FF3B58",
+    "health_bg": "#39111B",
+    "special": "#28D7FF",
+    "xp": "#35F06B",
+    "coin": "#FFD447",
+    "player": "#FFF7D6",
+    "player_core": "#28D7FF",
+    "projectile": "#7DF9FF",
+    "projectile_freeze": "#A6F3FF",
+    "poison": "#8BFF4A",
+    "sword": "#FFE66D",
+    "shield": "#4F8CFF",
+    "danger": "#FF5C7A",
+    "upgrade": "#D96CFF",
 }
 
 TERRAIN_TYPES = {
     "grass": {
-        "color": "#173B2A",
-        "accent": "#1F5138",
+        "color": "#12351F",
+        "accent": "#1B6B36",
         "speed": 1.0,
         "name": "Grama",
     },
     "sand": {
-        "color": "#786C3A",
-        "accent": "#9A8849",
+        "color": "#6B5A2A",
+        "accent": "#C39B3B",
         "speed": 0.55,
         "name": "Areia",
     },
     "mud": {
-        "color": "#46372B",
-        "accent": "#5C4938",
+        "color": "#352235",
+        "accent": "#66415D",
         "speed": 0.76,
         "name": "Lama",
     },
     "stone": {
-        "color": "#293241",
-        "accent": "#384558",
+        "color": "#20233F",
+        "accent": "#414A78",
         "speed": 0.92,
         "name": "Pedra",
     },

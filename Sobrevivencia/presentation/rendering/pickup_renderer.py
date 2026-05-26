@@ -76,4 +76,5 @@ class PickupRendererMixin:
                 self.screen.blit(rotated_surf, rotated_rect.topleft)
             if getattr(game, "light_level", 1.0) < 0.15:
                 outline = (250, 204, 21) if drop.kind in ("coin", "chalice") else (186, 230, 253)
-                pygame.draw.circle(self.screen, outline, (x, y), int(drop.radius + 5), 2)
+                pygame.draw.circle(self.screen, outline, (x, y), int(drop.radius + 7), 3)
+                pygame.draw.circle(self.screen, (255, 255, 255), (x, y), max(2, int(drop.radius * 0.28)))

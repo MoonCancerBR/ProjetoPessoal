@@ -2,12 +2,26 @@ from pygame.math import Vector2
 import math
 if __package__:
     from ...data.constants import *
+    from ..combate import sangue
     from ...data.stamps import ALL_DROPPABLE_STAMP_KEYS, stamp_effect_value, stamps_equipped_for_weapon
+    from ..personagem import atributos
+    from ..personagem.cacadora import combate as cacadora_combate
+    from ..personagem.ceifadora import combate as ceifadora_combate
+    from ..personagem.engenheiro import combate as engenheiro_combate
+    from ..personagem.vanguarda import combate as vanguarda_combate
+    from ..personagem.combat_dispatch import auto_attack_for, cast_ultimate, cast_weapon_special
     from ..entities import Hazard, PlayerConstruct, Projectile, RectBody, Slash
     from ..world import circle_rect_overlap
 else:
     from Sobrevivencia.data.constants import *
+    from Sobrevivencia.core.combate import sangue
     from Sobrevivencia.data.stamps import ALL_DROPPABLE_STAMP_KEYS, stamp_effect_value, stamps_equipped_for_weapon
+    from Sobrevivencia.core.personagem import atributos
+    from Sobrevivencia.core.personagem.cacadora import combate as cacadora_combate
+    from Sobrevivencia.core.personagem.ceifadora import combate as ceifadora_combate
+    from Sobrevivencia.core.personagem.engenheiro import combate as engenheiro_combate
+    from Sobrevivencia.core.personagem.vanguarda import combate as vanguarda_combate
+    from Sobrevivencia.core.personagem.combat_dispatch import auto_attack_for, cast_ultimate, cast_weapon_special
     from Sobrevivencia.core.entities import Hazard, PlayerConstruct, Projectile, RectBody, Slash
     from Sobrevivencia.core.world import circle_rect_overlap
 
@@ -63,8 +77,9 @@ class CombatManager:
         rect = RectBody(mine_pos.x - size * 0.5, mine_pos.y - size * 0.5, size, size)
         mine_id = f"dash_mine:{player.player_index}:{int(self.time_alive * 1000)}:{len(chunk['hazards'])}"
         chunk["hazards"].append(Hazard(id=mine_id, rect=rect, kind="mine", chunk=(cx, cy)))
-        self.emit_particles(mine_pos, count=12, color="#EAB308", speed=80, lifetime=0.35, size=4)
-        self.message = "Dash do Engenheiro: mina terrestre armada."
+        self.emit_particles(mine_pos, count=12, color="#22D3EE", speed=90, lifetime=0.35, size=4)
+        self.emit_particles(mine_pos + Vector2(0, -4), count=5, color="#FACC15", speed=45, lifetime=0.2, size=2)
+        self.message = "Dash do Engenheiro: mina de pulso armada."
 
     def _spawn_reaper_dash_slash(self, player):
         inv = self.get_inventory(player.player_index)
@@ -132,397 +147,49 @@ class CombatManager:
         player.special = max(player.special_ranged, player.special_melee)
 
     def _cast_weapon_special(self, channel, aim_world, player=None):
-        if player is None:
-            player = self.player
-        if player.char_class == "vanguard":
-            if channel == "ranged":
-                self._cast_vanguard_radial(player=player)
-            else:
-                self._cast_vanguard_charge(aim_world, player=player)
-        elif player.char_class == "reaper":
-            if channel == "ranged":
-                self._cast_reaper_rosary(aim_world, player=player)
-            else:
-                self._cast_reaper_harvest(aim_world, player=player)
-        elif player.char_class == "engineer":
-            if channel == "ranged":
-                self._cast_engineer_turret_grid(aim_world, player=player)
-            else:
-                self._cast_engineer_magnetic_implosion(aim_world, player=player)
-        else:
-            if channel == "ranged":
-                self._cast_huntress_arrow_rain(aim_world, player=player)
-            else:
-                self._cast_huntress_dagger_dance(player=player)
+        return cast_weapon_special(self, channel, aim_world, player)
 
     def _cast_ultimate(self, aim_world, player=None):
-        if player is None:
-            player = self.player
-        if player.char_class == "vanguard":
-            self._cast_vanguard_ultimate(aim_world, player)
-        elif player.char_class == "reaper":
-            self._cast_reaper_ultimate(aim_world, player)
-        elif player.char_class == "engineer":
-            self._cast_engineer_ultimate(aim_world, player)
-        else:
-            self._cast_huntress_ultimate(aim_world, player)
-        self.screen_shake = max(self.screen_shake, 18.0)
+        return cast_ultimate(self, aim_world, player)
 
     def _cast_vanguard_ultimate(self, aim_world, player):
-        center = Vector2(player.pos)
-        radius = self.special_radius_for(player) * 1.05
-        player.activate_shield()
-        player.shield_timer = max(player.shield_timer, 5.0)
-        for ring in range(3):
-            self.item_events.append({
-                "type": "explosion",
-                "pos": center,
-                "radius": radius * (0.45 + ring * 0.28),
-                "damage": 0,
-                "age": 0.0,
-                "duration": 0.35 + ring * 0.08,
-                "owner": player.player_index,
-            })
-        for enemy in list(self.enemies):
-            dist = enemy.pos.distance_to(center)
-            if dist <= radius + enemy.radius:
-                direction = enemy.pos - center
-                if direction.length_squared() > 0:
-                    enemy.knockback += direction.normalize() * (760 - min(520, dist))
-                damage = self.special_damage_for(player) * (1.15 + max(0.0, 1.0 - dist / radius) * 0.75)
-                self.damage_enemy(enemy, damage, source="special", killer_index=player.player_index)
-        self.emit_particles(center, count=72, color="#38BDF8", speed=320, lifetime=0.55, size=6)
-        self.message = "Ultimate: Bastiao de Ruptura!"
+        return vanguarda_combate.cast_ultimate(self, aim_world, player)
 
     def _cast_huntress_ultimate(self, aim_world, player):
-        center = Vector2(aim_world)
-        radius = self.special_radius_for(player) * 0.95
-        marked = []
-        for enemy in list(self.enemies):
-            if enemy.pos.distance_squared_to(center) <= (radius + enemy.radius) ** 2:
-                marked.append(enemy)
-                enemy.bleed_timer = max(enemy.bleed_timer, 7.0)
-                enemy.bleed_dps = max(enemy.bleed_dps, 34.0)
-                enemy.hit_flash = 0.22
-        for idx, enemy in enumerate(list(marked)):
-            if enemy not in self.enemies:
-                continue
-            start = center + Vector2(math.cos(idx * 2.399), math.sin(idx * 2.399)) * radius
-            self._apply_laser_damage(start, enemy.pos, 22, self.special_damage_for(player) * 0.34, damage_player=False, killer_index=player.player_index)
-            self.item_events.append({
-                "type": "laser",
-                "start": start,
-                "end": Vector2(enemy.pos),
-                "width": 22,
-                "age": 0.0,
-                "duration": 0.24,
-                "color": "#F97316",
-            })
-            if enemy.health <= enemy.max_health * 0.22:
-                self.damage_enemy(enemy, enemy.max_health * 0.45, source="special", killer_index=player.player_index)
-        self.emit_particles(center, count=54, color="#F97316", speed=260, lifetime=0.5, size=5)
-        self.message = "Ultimate: Eclipse da Predadora!"
+        return cacadora_combate.cast_ultimate(self, aim_world, player)
 
     def _cast_engineer_ultimate(self, aim_world, player):
-        center = Vector2(aim_world)
-        self._cast_engineer_magnetic_implosion(center, multiplier=1.35, player=player, silent=True)
-        for idx, angle in enumerate((0, math.tau / 3, math.tau * 2 / 3)):
-            pos = player.pos + Vector2(math.cos(angle), math.sin(angle)) * 86
-            self._spawn_engineer_construct(pos, "turret" if idx != 1 else "laser_turret", player.player_index, level=2, duration=18.0)
-        for idx in range(4):
-            pos = player.pos + self.random_offset(110)
-            self._spawn_engineer_construct(pos, "drone", player.player_index, level=1, duration=15.0)
-        self.emit_particles(player.pos, count=70, color="#EAB308", speed=300, lifetime=0.55, size=5)
-        self.message = "Ultimate: Fabrica Ragnarok!"
+        return engenheiro_combate.cast_ultimate(self, aim_world, player)
 
     def _spawn_engineer_construct(self, pos, kind, owner, level=1, duration=12.0):
-        hp = 85.0 + level * 35.0
-        radius = 14.0 if kind != "drone" else 9.0
-        construct = PlayerConstruct(
-            pos=Vector2(pos),
-            kind=kind,
-            hp=hp,
-            max_hp=hp,
-            radius=radius,
-            duration=duration,
-            owner=owner,
-            level=level,
-        )
-        self.player_constructs.append(construct)
-        return construct
+        return engenheiro_combate.spawn_construct(self, pos, kind, owner, level, duration)
 
     def _cast_engineer_turret_grid(self, aim_world, player=None):
-        if player is None:
-            player = self.player
-        direction = Vector2(aim_world) - player.pos
-        if direction.length_squared() <= 0.01:
-            direction = player.last_move_dir
-        direction = direction.normalize()
-        side = direction.rotate(90)
-        base = player.pos + direction * 86
-        self._spawn_engineer_construct(base - side * 42, "turret", player.player_index, level=1, duration=16.0)
-        self._spawn_engineer_construct(base + side * 42, "laser_turret", player.player_index, level=1, duration=13.0)
-        self.emit_particles(base, count=24, color="#EAB308", speed=170, lifetime=0.35, size=4)
-        self.message = "Engenheiro: grade de torretas implantada."
+        return engenheiro_combate.cast_turret_grid(self, aim_world, player)
 
     def _cast_engineer_magnetic_implosion(self, aim_world, multiplier=1.0, player=None, silent=False):
-        if player is None:
-            player = self.player
-        center = Vector2(aim_world)
-        radius = 285
-        damage = self.special_damage_for(player) * 0.95 * multiplier
-        pulled = 0
-        for enemy in list(self.enemies):
-            diff = center - enemy.pos
-            dist = diff.length()
-            if dist <= radius + enemy.radius:
-                if diff.length_squared() > 0:
-                    enemy.pos += diff.normalize() * min(150, max(35, dist * 0.42))
-                    enemy.knockback += diff.normalize() * 180
-                pulled += 1
-        burst = damage * (1.0 + min(0.55, pulled * 0.045))
-        for enemy in list(self.enemies):
-            if enemy.pos.distance_squared_to(center) <= (145 + enemy.radius) ** 2:
-                self.damage_enemy(enemy, burst, source="special", killer_index=player.player_index)
-        self.item_events.append({
-            "type": "explosion",
-            "pos": center,
-            "radius": radius,
-            "damage": 0,
-            "age": 0.0,
-            "duration": 0.34,
-            "owner": player.player_index,
-        })
-        self.emit_particles(center, count=40, color="#A78BFA", speed=260, lifetime=0.45, size=5)
-        if not silent:
-            self.message = "Engenheiro: singularidade magnetica detonada."
+        return engenheiro_combate.cast_magnetic_implosion(self, aim_world, multiplier, player, silent)
 
     def _cast_vanguard_radial(self, multiplier=1.0, radius_multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        inv = self.get_inventory(player.player_index)
-        special_damage = self.special_damage_for(player) * multiplier
-        special_radius = self.special_radius_for(player) * radius_multiplier
-        self.special_blast_timer = 0.35
-        self.screen_shake = max(self.screen_shake, 16.0)
-        self.emit_particles(player.pos, count=34, color=COLORS["special"], speed=260, lifetime=0.44, size=6)
-        if not silent:
-            self.message = "Explosao radial liberada!"
-
-        for enemy in list(self.enemies):
-            distance = enemy.pos.distance_to(player.pos)
-            if distance <= special_radius:
-                direction = enemy.pos - player.pos
-                if direction.length_squared() > 0:
-                    enemy.knockback += direction.normalize() * 520
-                self.damage_enemy(enemy, special_damage, source="special", killer_index=player.player_index)
-
-        for item in list(self.world.nearby_destructibles(player.pos.x, player.pos.y, special_radius * 0.75)):
-            if item.rect.center.distance_to(player.pos) <= special_radius * 0.75:
-                self.destroy_destructible(item)
-
-        reactor = player.passives.get("reactor_blast", 0)
-        if reactor > 0:
-            restored = min(self.magazine_capacity_for(player) - player.ammo_magazine, 2 + reactor * 2)
-            if restored > 0:
-                player.ammo_magazine += restored
-                player.forced_reload = False
-                player.reload_timer = 0
-                player.mode = "weapon_1"
-                if not silent:
-                    self.message = "Explosao radial liberada! Pente reenergizado."
+        return vanguarda_combate.cast_radial(self, multiplier, radius_multiplier, silent, player)
 
     def _cast_vanguard_charge(self, aim_world, multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        direction = Vector2(aim_world) - player.pos
-        if direction.length_squared() <= 0.01:
-            direction = player.last_move_dir
-        if direction.length_squared() <= 0.01:
-            direction = Vector2(1, 0)
-        direction = direction.normalize()
-        start = Vector2(player.pos)
-        end = start + direction * 420
-        width = 78
-        damage = self.special_damage_for(player) * 0.88 * multiplier
-        self._apply_laser_damage(start, end, width, damage, damage_player=False, killer_index=player.player_index)
-        player.pos = self.world.move_circle(player.pos, player.radius, direction * 240, include_destructibles=False)
-        self.item_events.append({
-            "type": "laser",
-            "start": start,
-            "end": end,
-            "width": width,
-            "age": 0.0,
-            "duration": 0.26,
-            "color": COLORS["sword"],
-        })
-        self.emit_particles(player.pos, count=18, color=COLORS["sword"], speed=210, lifetime=0.30, size=5)
-        self.screen_shake = max(self.screen_shake, 12.0)
-        if not silent:
-            self.message = "Carga Titanica!"
+        return vanguarda_combate.cast_charge(self, aim_world, multiplier, silent, player)
 
     def _cast_huntress_arrow_rain(self, aim_world, multiplier=1.0, radius_multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        storm_eye = player.passives.get("storm_eye", 0)
-        duration = (2.0 + storm_eye * 0.12) * (1.0 + (multiplier - 1.0) * 0.5)
-        self.item_events.append({
-            "type": "arrow_rain",
-            "pos": Vector2(aim_world),
-            "timer": duration,
-            "age": 0.0,
-            "duration": duration,
-            "damage": self.special_damage_for(player) * (0.18 + storm_eye * 0.006) * multiplier,
-            "radius": self.special_radius_for(player) * 0.8 * radius_multiplier,
-            "owner": player.player_index,
-        })
-        if not silent:
-            self.message = "Chuva de Flechas!"
+        return cacadora_combate.cast_arrow_rain(self, aim_world, multiplier, radius_multiplier, silent, player)
 
     def _cast_huntress_dagger_dance(self, multiplier=1.0, radius_multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        radius = 260 * radius_multiplier
-        damage = self.special_damage_for(player) * 0.72 * multiplier
-        for enemy in list(self.enemies):
-            if enemy.pos.distance_squared_to(player.pos) <= (radius + enemy.radius) ** 2:
-                enemy.bleed_timer = max(enemy.bleed_timer, 4.0)
-                enemy.bleed_dps = max(enemy.bleed_dps, 18.0 * multiplier)
-                push = enemy.pos - player.pos
-                if push.length_squared() > 0:
-                    enemy.knockback += push.normalize() * 260
-                self.damage_enemy(enemy, damage, source="special", killer_index=player.player_index)
-        self.item_events.append({
-            "type": "explosion",
-            "pos": Vector2(player.pos),
-            "radius": radius,
-            "damage": 0,
-            "age": 0.0,
-            "duration": 0.32,
-            "owner": player.player_index,
-        })
-        self.emit_particles(player.pos, count=24, color=COLORS["sword"], speed=190, lifetime=0.38, size=4)
-        player.invulnerable_timer = max(player.invulnerable_timer, 0.65)
-        self.screen_shake = max(self.screen_shake, 10.0)
-        if not silent:
-            self.message = "Danca das Adagas!"
+        return cacadora_combate.cast_dagger_dance(self, multiplier, radius_multiplier, silent, player)
 
     def _cast_reaper_rosary(self, aim_world, multiplier=1.0, radius_multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        red_eclipse = player.passives.get("red_eclipse", 0)
-        duration = 2.8 + red_eclipse * 0.14
-        self.item_events.append({
-            "type": "blood_zone",
-            "pos": Vector2(aim_world),
-            "timer": duration,
-            "pulse_timer": 0.0,
-            "age": 0.0,
-            "duration": duration,
-            "damage": self.special_damage_for(player) * (0.17 + red_eclipse * 0.008) * multiplier,
-            "radius": self.special_radius_for(player) * 0.62 * radius_multiplier,
-            "owner": player.player_index,
-            "mark_bonus": 1 if red_eclipse >= 5 else 0,
-        })
-        self.emit_particles(aim_world, count=26, color="#991B1B", speed=170, lifetime=0.34, size=4)
-        if not silent:
-            self.message = "Rosario de Dor!"
+        return ceifadora_combate.cast_rosary(self, aim_world, multiplier, radius_multiplier, silent, player)
 
     def _cast_reaper_harvest(self, aim_world, multiplier=1.0, silent=False, player=None):
-        if player is None:
-            player = self.player
-        direction = Vector2(aim_world) - player.pos
-        if direction.length_squared() <= 0.01:
-            direction = player.last_move_dir
-        if direction.length_squared() <= 0.01:
-            direction = Vector2(1, 0)
-        direction = direction.normalize()
-
-        red_eclipse = player.passives.get("red_eclipse", 0)
-        start = Vector2(player.pos)
-        end = start + direction * (240 + red_eclipse * 8)
-        hits = self._segment_enemies(start, end, 54 + red_eclipse * 2)
-        consumed_total = 0
-        for _, enemy in hits:
-            consumed = self._consume_blood_mark(enemy, player, special_gain_scale=0.7)
-            consumed_total += consumed
-            enemy.bleed_timer = max(enemy.bleed_timer, 3.2 + red_eclipse * 0.12)
-            enemy.bleed_dps = max(enemy.bleed_dps, 11.0 + red_eclipse * 1.8)
-            enemy.knockback += direction * (150 + consumed * 36)
-            damage = self.special_damage_for(player) * (0.56 + consumed * 0.16) * multiplier
-            self.damage_enemy(enemy, damage, source="special", killer_index=player.player_index)
-            if consumed <= 0:
-                self._apply_blood_mark(enemy, player, bonus_duration=0.4)
-
-        player.pos = self.world.move_circle(player.pos, player.radius, direction * (170 + red_eclipse * 4), include_destructibles=False)
-        self.item_events.append({
-            "type": "laser",
-            "start": start,
-            "end": end,
-            "width": 34 + red_eclipse * 2,
-            "age": 0.0,
-            "duration": 0.18,
-            "color": "#991B1B",
-        })
-        if consumed_total > 0:
-            capacity = self.magazine_capacity_for(player)
-            restored = min(capacity - player.ammo_magazine, consumed_total)
-            if restored > 0:
-                player.ammo_magazine += restored
-                player.forced_reload = False
-                self.add_floater(player.pos, f"+{restored} pente", "#FCA5A5")
-            heal = min(player.max_health - player.health, consumed_total * (3.0 + player.passives.get("harvest_heal", 0) * 0.4))
-            if heal > 0:
-                player.health += heal
-                self.add_floater(player.pos, f"+{heal:.0f}", COLORS["health"])
-        self.emit_particles(player.pos, count=20, color="#7F1D1D", speed=220, lifetime=0.28, size=4)
-        self.screen_shake = max(self.screen_shake, 11.0)
-        if not silent:
-            self.message = "Colheita Rubra!"
+        return ceifadora_combate.cast_harvest(self, aim_world, multiplier, silent, player)
 
     def _cast_reaper_ultimate(self, aim_world, player):
-        red_eclipse = player.passives.get("red_eclipse", 0)
-        center = Vector2(player.pos)
-        radius = self.special_radius_for(player) * (0.82 + red_eclipse * 0.012)
-        player.activate_buff("reaper_frenzy")
-        player.buffs["reaper_frenzy"] = max(player.buffs.get("reaper_frenzy", 0.0), 5.2 + red_eclipse * 0.30)
-        player.invulnerable_timer = max(player.invulnerable_timer, 0.55)
-
-        for enemy in list(self.enemies):
-            if enemy.pos.distance_squared_to(center) > (radius + enemy.radius) ** 2:
-                continue
-            self._apply_blood_mark(enemy, player, bonus_duration=1.0, level_bonus=1)
-            enemy.bleed_timer = max(enemy.bleed_timer, 5.0 + red_eclipse * 0.15)
-            enemy.bleed_dps = max(enemy.bleed_dps, 15.0 + red_eclipse * 2.0)
-            diff = enemy.pos - center
-            if diff.length_squared() > 0:
-                enemy.knockback += diff.normalize() * (220 + red_eclipse * 8)
-            damage = self.special_damage_for(player) * (0.52 + max(0.0, 1.0 - enemy.pos.distance_to(center) / max(1.0, radius)) * 0.24)
-            self.damage_enemy(enemy, damage, source="special", killer_index=player.player_index)
-
-        self.item_events.append({
-            "type": "blood_zone",
-            "pos": center,
-            "timer": 3.2 + red_eclipse * 0.16,
-            "pulse_timer": 0.0,
-            "age": 0.0,
-            "duration": 3.2 + red_eclipse * 0.16,
-            "damage": self.special_damage_for(player) * (0.11 + red_eclipse * 0.006),
-            "radius": radius * 0.72,
-            "owner": player.player_index,
-            "mark_bonus": 1,
-        })
-        self.item_events.append({
-            "type": "explosion",
-            "pos": center,
-            "radius": radius,
-            "damage": 0,
-            "age": 0.0,
-            "duration": 0.42,
-            "owner": player.player_index,
-        })
-        self.emit_particles(center, count=64, color="#DC2626", speed=300, lifetime=0.52, size=5)
-        self.message = "Ultimate: Noite da Degola!"
+        return ceifadora_combate.cast_ultimate(self, aim_world, player)
 
     def _ranged_weapon_ready(self, show_message=False):
         return self._ranged_weapon_ready_for(self.player, show_message=show_message)
@@ -648,14 +315,7 @@ class CombatManager:
         return max(0.55, DASH_COOLDOWN * (1.0 - reduction))
 
     def effective_attack_rate_multiplier(self):
-        blade = self.item_level("blade_relay")
-        hybrid = self.hybrid_level()
-        both_bonus = (
-            self.passive_level("combat_drill") * 0.01
-            + self.passive_level("predator_focus") * 0.012
-            + self.passive_level("scarlet_reload") * 0.004
-        )
-        return self.player.attack_rate_multiplier() * (1.0 + blade * 0.012 + hybrid * 0.01 + both_bonus)
+        return self.effective_attack_rate_multiplier_for(self.player, self.inventory)
 
     def ranged_damage_multiplier(self):
         return (
@@ -676,60 +336,31 @@ class CombatManager:
         )
 
     def projectile_damage(self):
-        storm = self.item_level("storm_core")
-        return self.player.projectile_damage() * (1.0 + storm * 0.01) * self.ranged_damage_multiplier()
+        return self.projectile_damage_for(self.player, self.inventory)
 
     def sword_damage(self):
-        blade = self.item_level("blade_relay")
-        return self.player.sword_damage() * (1.0 + blade * 0.012) * self.melee_damage_multiplier()
+        return self.sword_damage_for(self.player, self.inventory)
 
     def sword_radius(self):
-        blade = self.item_level("blade_relay")
-        hybrid = self.hybrid_level()
-        melee_bonus = (
-            self.passive_level("wide_cleave") * 0.030
-            + self.passive_level("fan_blades") * 0.028
-            + self.passive_level("reaping_arc") * 0.028
-        )
-        return self.player.sword_radius() * (1.0 + blade * 0.018 + hybrid * 0.018 + melee_bonus)
+        return self.sword_radius_for(self.player, self.inventory)
 
     def sword_arc(self):
-        return SWORD_ARC + math.radians(self.passive_level("wide_cleave") * 2.4 + self.passive_level("reaping_arc") * 2.2)
+        return self.sword_arc_for(self.player)
 
     def dagger_arc(self):
-        return SWORD_ARC * 0.6 + math.radians(self.passive_level("fan_blades") * 2.8)
+        return self.dagger_arc_for(self.player)
 
     def special_damage(self):
-        return SPECIAL_DAMAGE * (
-            1.0
-            + self.passive_level("reactor_blast") * 0.055
-            + self.passive_level("storm_eye") * 0.040
-            + self.passive_level("red_eclipse") * 0.045
-        )
+        return self.special_damage_for(self.player)
 
     def special_radius(self):
-        return SPECIAL_RADIUS * (
-            1.0
-            + self.passive_level("reactor_blast") * 0.030
-            + self.passive_level("storm_eye") * 0.025
-            + self.passive_level("red_eclipse") * 0.028
-        )
+        return self.special_radius_for(self.player)
 
     def special_damage_for(self, player):
-        return SPECIAL_DAMAGE * (
-            1.0
-            + player.passives.get("reactor_blast", 0) * 0.055
-            + player.passives.get("storm_eye", 0) * 0.040
-            + player.passives.get("red_eclipse", 0) * 0.045
-        )
+        return atributos.special_damage_for(player)
 
     def special_radius_for(self, player):
-        return SPECIAL_RADIUS * (
-            1.0
-            + player.passives.get("reactor_blast", 0) * 0.030
-            + player.passives.get("storm_eye", 0) * 0.025
-            + player.passives.get("red_eclipse", 0) * 0.028
-        )
+        return atributos.special_radius_for(player)
 
     def incoming_damage_multiplier(self):
         """Multiplicador de dano recebido para self.player (single-player helper)."""
@@ -739,6 +370,27 @@ class CombatManager:
         if self.player.health / self.player.max_health > 0.42:
             return 1.0
         return max(0.52, 1.0 - (0.10 + guardian_reduction))
+
+    def effective_attack_rate_multiplier_for(self, player, inv):
+        return atributos.effective_attack_rate_multiplier_for(self, player, inv)
+
+    def projectile_damage_for(self, player, inv):
+        return atributos.projectile_damage_for(self, player, inv)
+
+    def sword_damage_for(self, player, inv):
+        return atributos.sword_damage_for(self, player, inv)
+
+    def projectile_radius_for(self, player, base_radius=PROJECTILE_RADIUS):
+        return atributos.projectile_radius_for(self, player, base_radius)
+
+    def sword_radius_for(self, player, inv):
+        return atributos.sword_radius_for(self, player, inv)
+
+    def sword_arc_for(self, player):
+        return atributos.sword_arc_for(player)
+
+    def dagger_arc_for(self, player):
+        return atributos.dagger_arc_for(player)
 
     def ranged_projectiles_per_salvo(self, player):
         if player.char_class == "vanguard":
@@ -766,34 +418,16 @@ class CombatManager:
         return True
 
     def _is_blood_marked(self, enemy):
-        return getattr(enemy, "blood_mark_timer", 0) > 0 and getattr(enemy, "blood_mark_level", 0) > 0
+        return sangue.is_blood_marked(enemy)
 
     def _apply_blood_mark(self, enemy, player, bonus_duration=0.0, level_bonus=0):
-        base_level = 1 + player.passives.get("blood_mark", 0) // 4 + level_bonus
-        base_duration = 2.25 + player.passives.get("blood_mark", 0) * 0.14 + player.passives.get("funeral_volley", 0) * 0.05 + bonus_duration
-        enemy.blood_mark_timer = max(getattr(enemy, "blood_mark_timer", 0.0), base_duration)
-        enemy.blood_mark_level = max(getattr(enemy, "blood_mark_level", 0), base_level)
+        return sangue.apply_blood_mark(enemy, player, bonus_duration, level_bonus)
 
     def _consume_blood_mark(self, enemy, player, special_gain_scale=1.0):
-        if not self._is_blood_marked(enemy):
-            return 0
-        mark_level = max(1, getattr(enemy, "blood_mark_level", 1))
-        enemy.blood_harvest_value = max(getattr(enemy, "blood_harvest_value", 0), mark_level)
-        enemy.blood_mark_timer = 0.0
-        enemy.blood_mark_level = 0
-        soul_tithe = player.passives.get("soul_tithe", 0)
-        if soul_tithe > 0:
-            player.add_special((1.15 + soul_tithe * 0.40) * special_gain_scale, "melee")
-        return mark_level
+        return sangue.consume_blood_mark(self, enemy, player, special_gain_scale)
 
     def _spread_blood_mark(self, center, player, radius, max_targets=2):
-        candidates = []
-        for enemy in self.enemies:
-            if enemy.pos.distance_squared_to(center) > radius ** 2:
-                continue
-            candidates.append((enemy.pos.distance_squared_to(center), enemy))
-        for _, enemy in sorted(candidates, key=lambda entry: entry[0])[:max_targets]:
-            self._apply_blood_mark(enemy, player, bonus_duration=0.4)
+        return sangue.spread_blood_mark(self, center, player, radius, max_targets)
 
     def _reward_reaper_mark_kill(self, enemy, killer):
         if killer.char_class != "reaper":
@@ -827,135 +461,13 @@ class CombatManager:
             self._spread_blood_mark(enemy.pos, killer, 110 + chain_level * 10, max_targets=1 + chain_level // 5)
 
     def _fire_vanguard_primary(self, player, direction, inv):
-        cooldown = (PROJECTILE_COOLDOWN * 1.18) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.shoot_timer > 0 or len(self.projectiles) >= MAX_PROJECTILES:
-            return
-        if not self._consume_ranged_ammo_for(player):
-            return
-        self._flag_ranged_attack_for_quest()
-
-        pellet_count = self.ranged_projectiles_per_salvo(player)
-        pellet_center = (pellet_count - 1) * 0.5
-        pierce = player.passives.get("piercing_rounds", 0) // 3
-        damage_scale = 0.54 + min(0.16, pellet_count * 0.015)
-        life = 0.40 + min(0.18, pierce * 0.03)
-        side = direction.rotate(90)
-        for index in range(pellet_count):
-            angle = (index - pellet_center) * 7.0
-            shot_dir = direction.rotate(angle)
-            offset = side * ((index - pellet_center) * 5.5)
-            created = self._append_projectile_if_room(
-                Projectile(
-                    pos=Vector2(player.pos) + shot_dir * (player.radius + 8) + offset,
-                    vel=shot_dir * (PROJECTILE_SPEED * 0.94),
-                    damage=self.projectile_damage_for(player, inv) * damage_scale,
-                    radius=self.projectile_radius_for(player, PROJECTILE_RADIUS * 0.88),
-                    life=life,
-                    freeze=player.buffs.get("freeze", 0) > 0,
-                    poison=player.passives.get("poison", 0) > 0,
-                    poison_dps=POISON_BASE_DPS * player.passives.get("poison", 0) * player.damage_multiplier(),
-                    bounces_left=player.passives.get("ricochet", 0),
-                    pierce=pierce,
-                    owner=player.player_index,
-                    style="vanguard_pellet",
-                    color="#EF4444",
-                    trail_scale=2.1,
-                    knockback=96 + player.passives.get("piercing_rounds", 0) * 9,
-                )
-            )
-            if not created:
-                break
-
-        self.emit_particles(player.pos + direction * 10, count=8, color="#F87171", speed=120, lifetime=0.18, size=3)
-        player.shoot_timer = cooldown
+        return vanguarda_combate.fire_primary(self, player, direction, inv)
 
     def _fire_huntress_primary(self, player, direction, inv):
-        cooldown = (PROJECTILE_COOLDOWN * 0.92) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.shoot_timer > 0 or len(self.projectiles) >= MAX_PROJECTILES:
-            return
-        if not self._consume_ranged_ammo_for(player):
-            return
-        self._flag_ranged_attack_for_quest()
-
-        split_level = player.passives.get("splinter_arrows", 0)
-        angles = [-3.0, 0.0, 3.0]
-        side_pairs = 0 if split_level <= 0 else 1 + split_level // 6
-        for pair in range(1, side_pairs + 1):
-            side_angle = 8.0 + pair * 5.0
-            angles.extend((side_angle, -side_angle))
-
-        for angle in angles:
-            shot_dir = direction.rotate(angle)
-            extra = abs(angle) > 3.1
-            damage_scale = 0.40 if not extra else 0.23 + split_level * 0.018
-            created = self._append_projectile_if_room(
-                Projectile(
-                    pos=Vector2(player.pos) + shot_dir * (player.radius + 10),
-                    vel=shot_dir * (PROJECTILE_SPEED * 1.58),
-                    damage=self.projectile_damage_for(player, inv) * damage_scale,
-                    radius=self.projectile_radius_for(player, PROJECTILE_RADIUS * (0.85 if extra else 0.92)),
-                    life=PROJECTILE_LIFE * (1.10 if not extra else 0.95),
-                    freeze=player.buffs.get("freeze", 0) > 0,
-                    pierce=1 if not extra else max(0, split_level // 5),
-                    explosive_level=player.passives.get("explosive", 0),
-                    homing_level=player.passives.get("homing", 0),
-                    owner=player.player_index,
-                    style="huntress_burst",
-                    color="#FACC15",
-                    trail_scale=4.5,
-                    knockback=38,
-                )
-            )
-            if not created:
-                break
-
-        self.emit_particles(player.pos + direction * 14, count=6, color="#FACC15", speed=170, lifetime=0.15, size=3)
-        player.shoot_timer = cooldown
+        return cacadora_combate.fire_primary(self, player, direction, inv)
 
     def _fire_reaper_primary(self, player, direction, inv):
-        frenzy = player.buffs.get("reaper_frenzy", 0) > 0
-        cooldown = (PROJECTILE_COOLDOWN * (0.98 if frenzy else 1.10)) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.shoot_timer > 0 or len(self.projectiles) >= MAX_PROJECTILES:
-            return
-        if not self._consume_ranged_ammo_for(player):
-            return
-        self._flag_ranged_attack_for_quest()
-
-        count = self.ranged_projectiles_per_salvo(player)
-        center = (count - 1) * 0.5
-        side = direction.rotate(90)
-        mourning_pierce = player.passives.get("mourning_pierce", 0)
-        extra_bounce = 1 if frenzy else 0
-        for index in range(count):
-            spread = (index - center) * 4.0
-            shot_dir = direction.rotate(spread)
-            offset = side * ((index - center) * 6.0)
-            extra = abs(index - center) > 0.01
-            damage_scale = (0.68 if not extra else 0.52) * (1.08 if frenzy else 1.0)
-            created = self._append_projectile_if_room(
-                Projectile(
-                    pos=Vector2(player.pos) + shot_dir * (player.radius + 9) + offset,
-                    vel=shot_dir * (PROJECTILE_SPEED * (1.34 if frenzy else 1.22)),
-                    damage=self.projectile_damage_for(player, inv) * damage_scale,
-                    radius=self.projectile_radius_for(player, PROJECTILE_RADIUS * 0.78),
-                    life=PROJECTILE_LIFE * (1.12 if frenzy else 1.02),
-                    bounces_left=extra_bounce,
-                    pierce=1 + mourning_pierce // 3,
-                    homing_level=1 if frenzy else 0,
-                    owner=player.player_index,
-                    style="reaper_needle",
-                    color="#991B1B",
-                    trail_scale=4.8,
-                    knockback=26,
-                    mark_level=1 + player.passives.get("blood_mark", 0) // 4,
-                    mark_duration=2.0 + player.passives.get("funeral_volley", 0) * 0.06,
-                )
-            )
-            if not created:
-                break
-
-        self.emit_particles(player.pos + direction * 12, count=7, color="#B91C1C", speed=140, lifetime=0.20, size=3)
-        player.shoot_timer = cooldown
+        return ceifadora_combate.fire_primary(self, player, direction, inv)
 
     def _segment_enemies(self, start, end, width):
         hits = []
@@ -971,182 +483,25 @@ class CombatManager:
         return hits
 
     def _fire_engineer_primary(self, player, direction, inv):
-        cooldown = (PROJECTILE_COOLDOWN * 1.04) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.shoot_timer > 0:
-            return
-        if not self._consume_ranged_ammo_for(player):
-            return
-        self._flag_ranged_attack_for_quest()
-
-        start = Vector2(player.pos) + direction * (player.radius + 10)
-        end = start + direction * 470
-        damage = self.projectile_damage_for(player, inv) * 0.92
-        plasma_aoe = player.passives.get("plasma_aoe", 0)
-        supercharge = player.passives.get("supercharge", 0)
-        hit_enemies = self._segment_enemies(start, end, 24 + supercharge * 2)
-
-        for index, (_, enemy) in enumerate(hit_enemies):
-            shot_damage = damage * max(0.62, 1.0 - index * 0.10)
-            if player.buffs.get("freeze", 0) > 0:
-                enemy.frozen_timer = max(enemy.frozen_timer, FREEZE_DURATION * 0.65)
-            if supercharge > 0 and self.random.random() < min(0.7, 0.16 + supercharge * 0.06):
-                enemy.frozen_timer = max(enemy.frozen_timer, 0.45 + supercharge * 0.08)
-                self.add_floater(enemy.pos, "CURTO!", "#93C5FD")
-            enemy.knockback += direction * (42 + supercharge * 10)
-            self.damage_enemy(enemy, shot_damage, source="laser", killer_index=player.player_index)
-            self._apply_stamp_on_hit(enemy, shot_damage, "weapon_1", player.player_index)
-            if plasma_aoe > 0 and index == 0:
-                self.item_events.append({
-                    "type": "explosion",
-                    "pos": Vector2(enemy.pos),
-                    "radius": 34 + plasma_aoe * 10,
-                    "damage": shot_damage * (0.22 + plasma_aoe * 0.05),
-                    "age": 0.0,
-                    "duration": 0.18,
-                    "owner": player.player_index,
-                })
-
-        self.item_events.append({
-            "type": "laser",
-            "start": start,
-            "end": end,
-            "width": 16 + supercharge * 2,
-            "age": 0.0,
-            "duration": 0.12,
-            "color": "#38BDF8",
-        })
-        self.emit_particles(start, count=8, color="#38BDF8", speed=160, lifetime=0.16, size=3)
-        player.shoot_timer = cooldown
+        return engenheiro_combate.fire_primary(self, player, direction, inv)
 
     def _swing_vanguard_melee(self, player, direction, inv):
-        cooldown = (SWORD_COOLDOWN * 1.08) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.sword_timer > 0:
-            return
-        self.slashes.append(
-            Slash(
-                origin=Vector2(player.pos),
-                direction=direction,
-                radius=self.sword_radius_for(player, inv) * 1.05,
-                arc=self.sword_arc_for(player) + math.radians(8),
-                damage=self.sword_damage_for(player, inv) * 1.14,
-                duration=SWORD_DURATION * 1.08,
-                execute_level=player.passives.get("execution_edge", 0),
-                shockwave_level=player.passives.get("shockwave", 0),
-                owner=player.player_index,
-                style="vanguard_cleave",
-                color="#FB7185",
-                edge_color="#FDE68A",
-                knockback=430,
-            )
-        )
-        player.sword_timer = cooldown
+        return vanguarda_combate.swing_melee(self, player, direction, inv)
 
     def _swing_huntress_melee(self, player, direction, inv):
-        cooldown = (SWORD_COOLDOWN * 0.40) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.sword_timer > 0:
-            return
-        for angle in (-12, 12):
-            self.slashes.append(
-                Slash(
-                    origin=Vector2(player.pos),
-                    direction=direction.rotate(angle),
-                    radius=self.sword_radius_for(player, inv) * 0.60,
-                    arc=self.dagger_arc_for(player) * 0.92,
-                    damage=self.sword_damage_for(player, inv) * 0.32,
-                    duration=SWORD_DURATION * 0.46,
-                    prey_mark_level=player.passives.get("prey_mark", 0),
-                    bleed_level=player.passives.get("bleeding_blades", 0),
-                    shadow_lunge_level=player.passives.get("shadow_lunge", 0),
-                    owner=player.player_index,
-                    style="huntress_combo",
-                    color="#FDE047",
-                    edge_color="#FEF3C7",
-                    knockback=165,
-                )
-            )
-        player.sword_timer = cooldown
+        return cacadora_combate.swing_melee(self, player, direction, inv)
 
     def _swing_engineer_melee(self, player, direction, inv):
-        cooldown = (SWORD_COOLDOWN * 0.78) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.sword_timer > 0:
-            return
-        heavy_alloy = player.passives.get("heavy_alloy", 0)
-        magnetic_pull = player.passives.get("magnetic_pull", 0)
-        self.slashes.append(
-            Slash(
-                origin=Vector2(player.pos),
-                direction=direction,
-                radius=self.sword_radius_for(player, inv) * 0.82,
-                arc=self.sword_arc_for(player) * 0.82,
-                damage=self.sword_damage_for(player, inv) * (0.82 + heavy_alloy * 0.04),
-                duration=SWORD_DURATION * 0.80,
-                heavy_alloy_level=heavy_alloy,
-                magnetic_pull_level=magnetic_pull,
-                owner=player.player_index,
-                style="engineer_wrench",
-                color="#38BDF8",
-                edge_color="#DBEAFE",
-                knockback=70 + heavy_alloy * 18,
-                pull_strength=140 + magnetic_pull * 28,
-            )
-        )
-        player.sword_timer = cooldown
+        return engenheiro_combate.swing_melee(self, player, direction, inv)
 
     def _swing_reaper_melee(self, player, direction, inv):
-        frenzy = player.buffs.get("reaper_frenzy", 0) > 0
-        cooldown = (SWORD_COOLDOWN * (0.62 if frenzy else 0.72)) / self.effective_attack_rate_multiplier_for(player, inv)
-        if player.sword_timer > 0:
-            return
-        self.slashes.append(
-            Slash(
-                origin=Vector2(player.pos),
-                direction=direction,
-                radius=self.sword_radius_for(player, inv) * (0.92 if frenzy else 0.84),
-                arc=self.sword_arc_for(player) * (0.98 if frenzy else 0.90),
-                damage=self.sword_damage_for(player, inv) * (0.78 if frenzy else 0.70),
-                duration=SWORD_DURATION * (0.74 if frenzy else 0.70),
-                bleed_level=player.passives.get("hemorrhage", 0),
-                owner=player.player_index,
-                style="reaper_scythe",
-                color="#991B1B",
-                edge_color="#FECACA",
-                knockback=210,
-                consume_mark=True,
-            )
-        )
-        player.sword_timer = cooldown
+        return ceifadora_combate.swing_melee(self, player, direction, inv)
 
     def _auto_attack(self, dt, aim_world):
         self._auto_attack_for(dt, aim_world, self.player)
 
     def _auto_attack_for(self, dt, aim_world, player):
-        direction = Vector2(aim_world) - player.pos
-        if direction.length_squared() < 0.01:
-            direction = Vector2(1, 0)
-        direction = direction.normalize()
-        pi = player.player_index
-        inv = self.get_inventory(pi)
-
-        if player.char_class == "vanguard":
-            if player.mode == "weapon_1":
-                self._fire_vanguard_primary(player, direction, inv)
-            else:
-                self._swing_vanguard_melee(player, direction, inv)
-        elif player.char_class == "reaper":
-            if player.mode == "weapon_1":
-                self._fire_reaper_primary(player, direction, inv)
-            else:
-                self._swing_reaper_melee(player, direction, inv)
-        elif player.char_class == "engineer":
-            if player.mode == "weapon_1":
-                self._fire_engineer_primary(player, direction, inv)
-            else:
-                self._swing_engineer_melee(player, direction, inv)
-        else:
-            if player.mode == "weapon_1":
-                self._fire_huntress_primary(player, direction, inv)
-            else:
-                self._swing_huntress_melee(player, direction, inv)
+        return auto_attack_for(self, dt, Vector2(aim_world), player)
 
     def _update_projectiles(self, dt):
         alive = []
@@ -1471,7 +826,8 @@ class CombatManager:
 
     def _detonate_mine(self, hazard, trigger_pos):
         self.world.remove_hazard(hazard)
-        self._apply_area_damage(trigger_pos, MINE_EXPLOSION_RADIUS, MINE_DAMAGE, "mine")
+        damage_players = not str(getattr(hazard, "id", "")).startswith("dash_mine:")
+        self._apply_area_damage(trigger_pos, MINE_EXPLOSION_RADIUS, MINE_DAMAGE, "mine", damage_players=damage_players)
         self.item_events.append({
             "type": "explosion",
             "pos": Vector2(trigger_pos),
@@ -1619,7 +975,9 @@ class CombatManager:
         coin_chance = enemy.coin_chance + heat_ratio * 0.15
         heal_chance = 0.035 + heat_ratio * 0.02
         shield_chance = 0.018 + heat_ratio * 0.015
-        box_chance = heat_ratio * 0.025
+        box_chance = 0.006 + heat_ratio * 0.045
+        if enemy.kind in ("brute", "chromatic", "bulwark", "golem", "necromancer"):
+            box_chance += 0.010
 
         if self.random.random() < coin_chance:
             self.spawn_drop("coin", enemy.pos + self.random_offset(18), 1)

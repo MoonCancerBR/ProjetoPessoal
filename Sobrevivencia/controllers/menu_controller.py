@@ -791,6 +791,8 @@ class MenuController:
         active_items = [item for item in raw_items if inv.is_active(item.slot_key)]
         reserve_items = [item for item in raw_items if not inv.is_active(item.slot_key)]
         items = active_items + reserve_items
+        altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+        can_black_market = altar_kind == "black_market_altar"
         if action == "resume":
             if game.active_altar is not None:
                 game.finish_altar_interaction(destroy=True)
@@ -798,7 +800,13 @@ class MenuController:
 
         # -- Ações de Selos (Stamps) --
         if action.startswith("stamp_select:"):
-            return state, int(action.split(":", 1)[1])
+            idx = int(action.split(":", 1)[1])
+            if can_black_market:
+                player = game.get_player(game.menu_player_index)
+                if idx < len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])):
+                    return state, idx
+                self._toggle_stamp_sale_mark(game, idx)
+            return state, idx
         if action == "stamp_equip_w1":
             game.equip_stamp("weapon_1", selected)
             return state, selected
@@ -826,7 +834,14 @@ class MenuController:
 
         # -- Ações de Itens Regulares --
         if action.startswith("item_select:"):
-            return state, int(action.split(":", 1)[1])
+            idx = int(action.split(":", 1)[1])
+            if can_black_market:
+                if idx < len(active_items):
+                    return state, idx
+                item = items[idx] if idx < len(items) else None
+                if item is not None and not inv.is_active(item.slot_key):
+                    self._toggle_inventory_sale_mark(game, item.slot_key)
+            return state, idx
             
         if not items:
             return state, selected

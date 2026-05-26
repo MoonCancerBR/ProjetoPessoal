@@ -62,7 +62,7 @@ class AssetRegistry:
         return icons
 
     def item_icon(self, key, size=(32, 32)):
-        return self.scaled_image(Path("items") / f"{key}.png", size)
+        return self.scaled_image(Path("items") / f"{key}.png", size, smooth=False)
 
     def sprite_atlas(self, image_relative_path, metadata_relative_path):
         key = (

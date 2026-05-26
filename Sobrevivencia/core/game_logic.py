@@ -9,6 +9,14 @@ if __package__:
     from ..data.stamps import stamp_total_bonus
     from .entities import Drop, Enemy, Player, Projectile, Slash, EscortNPC
     from ..data.items import Inventory, item_display_name, RELIC_DEFINITIONS
+    from .omni_kernel import system as omni_kernel
+    from .omni_kernel.progresso import calice
+    from .hud_status import camera as camera_system
+    from .altares import sistema as altar_system
+    from .mundo import dimensoes
+    from .mundo import escolta as escort_system
+    from .personagem import atributos
+    from .personagem import movimento
     from .world import World, circle_rect_overlap
 else:
     from Sobrevivencia.config.runtime import optional_import
@@ -16,6 +24,14 @@ else:
     from Sobrevivencia.data.stamps import stamp_total_bonus
     from Sobrevivencia.core.entities import Drop, Enemy, Player, Projectile, Slash, EscortNPC
     from Sobrevivencia.data.items import Inventory, item_display_name, RELIC_DEFINITIONS
+    from Sobrevivencia.core.omni_kernel import system as omni_kernel
+    from Sobrevivencia.core.omni_kernel.progresso import calice
+    from Sobrevivencia.core.hud_status import camera as camera_system
+    from Sobrevivencia.core.altares import sistema as altar_system
+    from Sobrevivencia.core.mundo import dimensoes
+    from Sobrevivencia.core.mundo import escolta as escort_system
+    from Sobrevivencia.core.personagem import atributos
+    from Sobrevivencia.core.personagem import movimento
     from Sobrevivencia.core.world import World, circle_rect_overlap
 
 pymunk = optional_import("pymunk")
@@ -278,22 +294,7 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
 
     @property
     def camera_focus(self):
-        if self.multiplayer and self.player2:
-            alive = self.alive_players()
-            if len(alive) == 2:
-                # Ponto médio
-                return (alive[0].pos + alive[1].pos) * 0.5
-            elif len(alive) == 1:
-                return alive[0].pos
-            return self.players[0].pos
-        
-        p = self.get_player(self.camera_focus_index)
-        if p.is_down and self.multiplayer:
-            other = self.get_player(1 - self.camera_focus_index)
-            if not other.is_down:
-                return other.pos
-        return p.pos
-
+        return camera_system.camera_focus(self)
     def alive_players(self):
         return [p for p in self.players if not p.is_down]
 
@@ -319,33 +320,19 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
         return True, ""
 
     def omni_active_ready(self):
-        return self.omni_kernel_active and self.omni_active_cooldown <= 0.0
+        return omni_kernel.active_ready(self)
 
     def omni_time_freeze_active(self):
-        return getattr(self, "omni_time_freeze_timer", 0.0) > 0.0
+        return omni_kernel.time_freeze_active(self)
 
     def omni_time_freeze_multiplier(self):
-        if not self.omni_time_freeze_active():
-            return 1.0
-        return OMNI_TIME_FREEZE_ENEMY_MULTIPLIER
+        return omni_kernel.time_freeze_multiplier(self)
 
     def omni_active_charge_ratio(self):
-        if not self.omni_kernel_active:
-            return 0.0
-        if self.omni_time_freeze_active():
-            return 1.0
-        if self.omni_active_cooldown <= 0.0:
-            return 1.0
-        return max(0.0, 1.0 - self.omni_active_cooldown / OMNI_TIME_FREEZE_COOLDOWN)
+        return omni_kernel.active_charge_ratio(self)
 
     def omni_active_status(self):
-        if not self.omni_kernel_active:
-            return "TRAVADO"
-        if self.omni_time_freeze_active():
-            return f"{self.omni_time_freeze_timer:.0f}s"
-        if self.omni_active_cooldown <= 0.0:
-            return "PRONTO"
-        return f"{self.omni_active_cooldown:.0f}s"
+        return omni_kernel.active_status(self)
 
     def register_kill_combo(self):
         now = self.time_alive
@@ -374,189 +361,13 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
             self._combo_recent_kills = []
 
     def enter_pocket_dimension(self):
-        if getattr(self, "current_dimension", "main") == "pocket":
-            self.pocket_dimension_timer = max(getattr(self, "pocket_dimension_timer", 0.0), 30.0)
-            return
-        state = {
-            "world": self.world,
-            "camera": Vector2(self.camera),
-            "enemies": self.enemies,
-            "projectiles": self.projectiles,
-            "slashes": self.slashes,
-            "drops": self.drops,
-            "altars": self.altars,
-            "drones": self.drones,
-            "constructs": self.player_constructs,
-        }
-        for player in self.players:
-            player.original_pos = Vector2(player.pos)
-        self.pocket_dimension_state = state
-        self.main_world = self.world
-        self.pocket_world = World()
-        self.world = self.pocket_world
-        self.enemies = []
-        self.projectiles = []
-        self.slashes = []
-        self.drops = []
-        self.altars = []
-        self.drones = []
-        self.player_constructs = []
-        self.current_dimension = "pocket"
-        self.miniboss_arena_center = None
-        self.miniboss_trapped_player = None
-        self.pocket_dimension_visits = getattr(self, "pocket_dimension_visits", 0) + 1
-        
-        base = Vector2(0, 0)
-        for index, player in enumerate(self.alive_players()):
-            player.pos = base + Vector2(index * 72, 0)
-            if player.body:
-                player.body.position = player.pos.x, player.pos.y
-        self.world.ensure_area(base, 2)
-        if not self.chalice_fragments.get("pocket_hidden", False):
-            self.spawn_drop("chalice", self.pocket_chalice_pos, "pocket_hidden")
-        self.camera = Vector2(base.x - SCREEN_WIDTH * 0.5, base.y - SCREEN_HEIGHT * 0.5)
-        
-        if self.pocket_dimension_visits % 5 == 0:
-            self.pocket_dimension_timer = 999999.0
-            self.message = "O Vazio escurece. O Arauto Sombrio despertou!"
-            heat_multiplier = 1.0 + getattr(self, "heat_level", 0.0) / 100.0 * 0.75
-            difficulty = (1.0 + self.time_alive / 85.0 + (self.player.level - 1) * 0.09) * heat_multiplier
-            self._spawn_special_enemy("harbinger", difficulty)
-        else:
-            self.pocket_dimension_timer = 30.0
-            self.message = "Dimensao de Bolso! Sobreviva ao HP Decay!"
-
-
+        return dimensoes.enter_pocket_dimension(self)
     def exit_pocket_dimension(self, reward=True):
-        state = getattr(self, "pocket_dimension_state", None)
-        if state is None:
-            self.current_dimension = "main"
-            return
-        self.world = state["world"]
-        self.main_world = self.world
-        self.camera = Vector2(state["camera"])
-        self.enemies = state["enemies"]
-        self.projectiles = state["projectiles"]
-        self.slashes = state["slashes"]
-        self.drops = state["drops"]
-        self.altars = state["altars"]
-        self.drones = state["drones"]
-        self.player_constructs = state["constructs"]
-        self.current_dimension = "main"
-        self.pocket_dimension_state = None
-        self.pocket_world = None
-        self.miniboss_arena_center = None
-        self.miniboss_trapped_player = None
-        self.message = "Sobreviveu ao Vazio! Caixa Lendaria obtida!" if reward else "Saiu da Dimensao de Bolso."
-        for player in self.alive_players():
-            orig = getattr(player, "original_pos", player.pos)
-            player.pos = Vector2(orig)
-            if player.body:
-                player.body.position = player.pos.x, player.pos.y
-            if reward:
-                self.spawn_drop("item_box", player.pos, 1)
-
+        return dimensoes.exit_pocket_dimension(self, reward)
     def enter_olympus_dimension(self):
-        self.olympus_triggered = True
-        state = {
-            "world": self.world,
-            "camera": Vector2(self.camera),
-            "enemies": self.enemies,
-            "projectiles": self.projectiles,
-            "slashes": self.slashes,
-            "drops": self.drops,
-            "altars": self.altars,
-            "drones": self.drones,
-            "constructs": self.player_constructs,
-        }
-        for player in self.players:
-            player.original_pos = Vector2(player.pos)
-        self.pocket_dimension_state = state
-        self.main_world = self.world
-        
-        from Sobrevivencia.core.world import World
-        self.olympus_world = World()
-        self.world = self.olympus_world
-        self.enemies = []
-        self.projectiles = []
-        self.slashes = []
-        self.drops = []
-        self.altars = []
-        self.drones = []
-        self.player_constructs = []
-        self.current_dimension = "olympus"
-        self.miniboss_arena_center = None
-        self.miniboss_trapped_player = None
-        
-        base = Vector2(0, 0)
-        for index, player in enumerate(self.alive_players()):
-            player.pos = base + Vector2(index * 72, 0)
-            if player.body:
-                player.body.position = player.pos.x, player.pos.y
-        self.world.ensure_area(base, 2)
-        self.camera = Vector2(base.x - SCREEN_WIDTH * 0.5, base.y - SCREEN_HEIGHT * 0.5)
-        
-        self.message = "BEM-VINDO AO OLIMPO. PREPARE-SE PARA O DEUS."
-        
-        # Spawna o boss God diretamente aqui para garantir que aparece de imediato
-        from Sobrevivencia.data.constants import ENEMY_TYPES
-        from Sobrevivencia.core.entities import Enemy
-        import math
-        data = ENEMY_TYPES["god"]
-        enemy = Enemy(
-            id=self.enemy_id,
-            pos=base + Vector2(0, -300),
-            kind="god",
-            radius=data["radius"],
-            speed=data["speed"],
-            max_health=data["health"],
-            health=data["health"],
-            damage=data["damage"],
-            xp_value=data["xp"],
-            color=data["color"],
-            special_value=data["special"],
-            coin_chance=data["coin_chance"],
-            lifetime=-1,
-            phase=self.random.random() * math.tau,
-            special_timer=3.0,
-        )
-        enemy.immune_to_knockback = True
-        enemy.summon_cooldown = 10.0
-        self.enemy_id += 1
-        self._setup_physics_entity(enemy)
-        self.enemies.append(enemy)
-        self.god_spawned = True
-        
-        self.olympus_distortion_timer = 0.0
-        self.olympus_distortion_type = ""
-
+        return dimensoes.enter_olympus_dimension(self)
     def exit_olympus_dimension(self):
-        state = getattr(self, "pocket_dimension_state", None)
-        if state is None:
-            self.current_dimension = "main"
-            return
-        self.world = state["world"]
-        self.main_world = self.world
-        self.camera = Vector2(state["camera"])
-        self.enemies = state["enemies"]
-        self.projectiles = state["projectiles"]
-        self.slashes = state["slashes"]
-        self.drops = state["drops"]
-        self.altars = state["altars"]
-        self.drones = state["drones"]
-        self.player_constructs = state["constructs"]
-        self.current_dimension = "main"
-        self.pocket_dimension_state = None
-        self.olympus_world = None
-        self.miniboss_arena_center = None
-        self.miniboss_trapped_player = None
-        self.message = "Voce destronou o Deus. A jornada continua."
-        for player in self.alive_players():
-            orig = getattr(player, "original_pos", player.pos)
-            player.pos = Vector2(orig)
-            if player.body:
-                player.body.position = player.pos.x, player.pos.y
-
+        return dimensoes.exit_olympus_dimension(self)
     def toggle_mode(self, player_index=0):
         player = self.get_player(player_index)
         if player.is_down:
@@ -626,9 +437,9 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
 
     @property
     def light_color(self):
-        r = int(255 * self.light_level + 12 * (1.0 - self.light_level))
-        g = int(255 * self.light_level + 16 * (1.0 - self.light_level))
-        b = int(255 * self.light_level + 32 * (1.0 - self.light_level))
+        r = int(255 * self.light_level + 76 * (1.0 - self.light_level))
+        g = int(255 * self.light_level + 84 * (1.0 - self.light_level))
+        b = int(255 * self.light_level + 122 * (1.0 - self.light_level))
         return (r, g, b)
 
     def try_place_light(self, player_index):
@@ -974,132 +785,43 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
             del player.buffs[name]
 
     def _move_player(self, dt, move_vector, aim_world):
-        self._move_player_for(dt, move_vector, aim_world, self.player)
+        return movimento.move_player(self, dt, move_vector, aim_world)
 
     def _move_player_for(self, dt, move_vector, aim_world, player):
-        player.is_moving_input = move_vector.length_squared() > 0.01
-        if move_vector.length_squared() > 0:
-            move_vector = move_vector.normalize()
-            player.last_move_dir = Vector2(move_vector)
-
-        if player.dash_timer > 0:
-            velocity = player.dash_dir * DASH_SPEED
-        else:
-            terrain_speed = self.world.speed_multiplier_at(player.pos.x, player.pos.y)
-            speed = player.base_speed * self.effective_speed_multiplier_for(player) * terrain_speed
-            velocity = move_vector * speed
-
-        player.pos = self.world.move_circle(player.pos, player.radius, velocity * dt)
-
-        # Restrição da Arena do Miniboss
-        center = getattr(self, "miniboss_arena_center", None)
-        if center is not None:
-            is_trapped = (getattr(self, "miniboss_trapped_player", None) == player) if getattr(self, "miniboss_trapped_player", None) is not None else True
-            radius = getattr(self, "miniboss_arena_radius", 520.0)
-            dist = player.pos.distance_to(center)
-            if is_trapped:
-                if dist > radius:
-                    to_center = (center - player.pos).normalize()
-                    player.pos = center + (player.pos - center).normalize() * radius
-                    damage_taken = 6.0 * dt
-                    # Apply knockback if player has a knockback property, or just apply it
-                    # We can use player.knockback += to_center * 150.0
-                    if hasattr(player, "knockback"):
-                        player.knockback += to_center * 150.0
-                    self._damage_player_direct(player, damage_taken)
-                    self.message = "Fugindo da Arena do Miniboss! Sofrendo dano!"
-            else:
-                if dist < radius:
-                    to_outside = (player.pos - center).normalize()
-                    player.pos = center + to_outside * radius
-                    damage_taken = 6.0 * dt
-                    if hasattr(player, "knockback"):
-                        player.knockback += to_outside * 150.0
-                    self._damage_player_direct(player, damage_taken)
-                    self.message = "Impossivel entrar na Arena do Miniboss!"
-
-        if player.body:
-            player.body.position = player.pos.x, player.pos.y
-            player.body.velocity = 0, 0
-        if player.shield_timer > 0:
-            self._repel_enemies(dt, player)
-
-
-
+        return movimento.move_player_for(self, dt, move_vector, aim_world, player)
     # ------------------------------------------------------------------ #
     # PER-PLAYER STAT HELPERS                                              #
     # ------------------------------------------------------------------ #
 
     def effective_speed_multiplier_for(self, player):
-        inv = self.get_inventory(player.player_index)
-        chrono = inv.active_effect_level("chrono_boots")
-        debuff = self.player_debuffs.get(player.player_index, {})
-        slow_mult = debuff.get("movement_slow_multiplier", 1.0) if debuff.get("movement_slow_timer", 0.0) > 0.0 else 1.0
-        return player.speed_multiplier() * (1.0 + chrono * 0.015) * slow_mult
+        return atributos.effective_speed_multiplier_for(self, player)
 
     def effective_attack_rate_multiplier_for(self, player, inv):
-        blade = inv.active_effect_level("blade_relay")
-        hybrid = inv.active_hybrid_level()
-        both_bonus = (
-            player.passives.get("combat_drill", 0) * 0.01
-            + player.passives.get("predator_focus", 0) * 0.012
-            + player.passives.get("scarlet_reload", 0) * 0.004
-        )
-        stamp_bonus = stamp_total_bonus(player, player.mode, "haste")
-        return player.attack_rate_multiplier() * (1.0 + blade * 0.012 + hybrid * 0.01 + both_bonus + stamp_bonus)
+        return atributos.effective_attack_rate_multiplier_for(self, player, inv)
 
     def projectile_damage_for(self, player, inv):
-        storm = inv.active_effect_level("storm_core")
-        stamp_bonus = stamp_total_bonus(player, "weapon_1", "impact")
-        ranged_mult = (
-            1.0
-            + player.passives.get("combat_drill", 0) * 0.025
-            + player.passives.get("predator_focus", 0) * 0.020
-            + player.passives.get("piercing_rounds", 0) * 0.015
-            + player.passives.get("mourning_pierce", 0) * 0.012
-            + stamp_bonus
-        )
-        return player.projectile_damage() * (1.0 + storm * 0.01) * ranged_mult
+        return atributos.projectile_damage_for(self, player, inv)
 
     def sword_damage_for(self, player, inv):
-        blade = inv.active_effect_level("blade_relay")
-        stamp_bonus = stamp_total_bonus(player, "weapon_2", "impact")
-        melee_mult = (
-            1.0
-            + player.passives.get("combat_drill", 0) * 0.025
-            + player.passives.get("predator_focus", 0) * 0.020
-            + player.passives.get("fan_blades", 0) * 0.018
-            + player.passives.get("harvest_heal", 0) * 0.010
-            + stamp_bonus
-        )
-        return player.sword_damage() * (1.0 + blade * 0.012) * melee_mult
+        return atributos.sword_damage_for(self, player, inv)
 
     def projectile_radius_for(self, player, base_radius=PROJECTILE_RADIUS):
-        caliber_bonus = stamp_total_bonus(player, "weapon_1", "caliber")
-        return base_radius * (1.0 + caliber_bonus)
+        return atributos.projectile_radius_for(self, player, base_radius)
 
     def sword_radius_for(self, player, inv):
-        blade = inv.active_effect_level("blade_relay")
-        hybrid = inv.active_hybrid_level()
-        melee_bonus = (
-            player.passives.get("wide_cleave", 0) * 0.030
-            + player.passives.get("fan_blades", 0) * 0.028
-            + player.passives.get("reaping_arc", 0) * 0.028
-        )
-        return player.sword_radius() * (1.0 + blade * 0.018 + hybrid * 0.018 + melee_bonus)
+        return atributos.sword_radius_for(self, player, inv)
 
     def sword_arc_for(self, player):
-        return SWORD_ARC + math.radians(player.passives.get("wide_cleave", 0) * 2.4 + player.passives.get("reaping_arc", 0) * 2.2)
+        return atributos.sword_arc_for(player)
 
     def dagger_arc_for(self, player):
-        return SWORD_ARC * 0.6 + math.radians(player.passives.get("fan_blades", 0) * 2.8)
+        return atributos.dagger_arc_for(player)
 
     def magazine_capacity_for(self, player):
-        level_capacity = BASE_MAGAZINE_CAPACITY + max(0, player.level - 1) * MAGAZINE_CAPACITY_PER_LEVEL
-        return level_capacity + player.magazine_bonus
+        return atributos.magazine_capacity_for(player)
 
     def max_ammo_reserve_for(self, player):
-        return STARTING_AMMO_RESERVE + max(0, player.level - 1) * 20
+        return atributos.max_ammo_reserve_for(player)
 
 
 
@@ -1160,104 +882,13 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
 
 
     def _update_world_timers(self, dt):
-        for chunk in self.world.chunks.values():
-            for item in chunk["destructibles"]:
-                item.hit_flash = max(0, item.hit_flash - dt)
-
-        # Escort Event Timer & State Machine
-        if not self.escort_event_active:
-            self.next_escort_timer = getattr(self, "next_escort_timer", 180.0) - dt
-            if self.next_escort_timer <= 0.0:
-                self._trigger_escort_event()
-        else:
-            self._update_escort_event(dt)
+        return escort_system.update_world_timers(self, dt)
 
     def _trigger_escort_event(self):
-        self.escort_event_active = True
-        self.escort_state = "seeking_spawn"
-        
-        # Spawn position: random angle, 900px distance from player
-        angle = self.random.uniform(0, 2 * math.pi)
-        spawn_dist = 900.0
-        self.escort_spawn_pos = self.player.pos + Vector2(math.cos(angle), math.sin(angle)) * spawn_dist
-        
-        # Extraction position: random angle, 1600px distance from spawn position
-        extract_angle = self.random.uniform(0, 2 * math.pi)
-        extract_dist = 1600.0
-        self.escort_extract_pos = self.escort_spawn_pos + Vector2(math.cos(extract_angle), math.sin(extract_angle)) * extract_dist
-        
-        self.escort_npcs = []
-        self.message = "MISSAO DE ESCOLTA: Encontre os aliados!"
+        return escort_system.trigger_escort_event(self)
 
     def _update_escort_event(self, dt):
-        if self.escort_state == "seeking_spawn":
-            # Check if any alive player reaches the spawn zone
-            player_reached = False
-            for player in self.alive_players():
-                if player.pos.distance_to(self.escort_spawn_pos) <= 150.0:
-                    player_reached = True
-                    break
-            if player_reached:
-                self.escort_state = "escorting"
-                self.escort_npcs = [
-                    EscortNPC(
-                        pos=Vector2(self.escort_spawn_pos) + Vector2(-15, -15),
-                        hp=120.0,
-                        max_hp=120.0,
-                        speed=85.0,
-                        kind="soldier",
-                    ),
-                    EscortNPC(
-                        pos=Vector2(self.escort_spawn_pos) + Vector2(15, 15),
-                        hp=150.0,
-                        max_hp=150.0,
-                        speed=80.0,
-                        kind="executive",
-                    ),
-                ]
-                self.message = "MISSAO DE ESCOLTA: Proteja os aliados ate o ponto de extracao!"
-        
-        elif self.escort_state == "escorting":
-            # Update NPCs movement and hit flash decay
-            npcs_alive = 0
-            reached_extract = 0
-            for npc in self.escort_npcs:
-                if npc.hp <= 0:
-                    continue
-                npcs_alive += 1
-                npc.hit_flash = max(0, npc.hit_flash - dt)
-                
-                # Move towards extraction point
-                to_extract = self.escort_extract_pos - npc.pos
-                dist = to_extract.length()
-                if dist > 50.0:
-                    dir_vector = to_extract.normalize()
-                    npc.pos += dir_vector * npc.speed * dt
-                else:
-                    reached_extract += 1
-            
-            # Check Failure
-            if npcs_alive == 0:
-                self.escort_state = "failed"
-                self.message = "MISSAO FALHOU: Todos os aliados morreram."
-                self.escort_post_event_timer = 5.0
-            
-            # Check Success: if all alive NPCs reached the extraction point
-            elif reached_extract == npcs_alive:
-                self.escort_state = "completed"
-                self.escort_post_event_timer = 5.0
-                self.completed_escorts = getattr(self, "completed_escorts", 0) + 1
-                if self.completed_escorts >= 4:
-                    self.grant_chalice_fragment("escort_4", self.escort_extract_pos)
-                
-        elif self.escort_state in ("completed", "failed"):
-            # Hold the completed/failed state for 5 seconds, then reset
-            self.escort_post_event_timer = getattr(self, "escort_post_event_timer", 5.0) - dt
-            if self.escort_post_event_timer <= 0.0:
-                self.escort_event_active = False
-                self.escort_state = None
-                self.escort_npcs = []
-                self.next_escort_timer = 240.0  # 4 minutos para o PROXIMO evento
+        return escort_system.update_escort_event(self, dt)
 
 
 
@@ -1284,11 +915,13 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
         for hazard in list(self.world.nearby_hazards(focus.x, focus.y, 980)):
             hazard.pulse += dt
             if hazard.kind == "mine":
+                is_dash_mine = str(getattr(hazard, "id", "")).startswith("dash_mine:")
                 trigger_pos = None
-                for player in self.alive_players():
-                    if circle_rect_overlap(player.pos.x, player.pos.y, player.radius + MINE_TRIGGER_RADIUS, hazard.rect):
-                        trigger_pos = Vector2(player.pos)
-                        break
+                if not is_dash_mine:
+                    for player in self.alive_players():
+                        if circle_rect_overlap(player.pos.x, player.pos.y, player.radius + MINE_TRIGGER_RADIUS, hazard.rect):
+                            trigger_pos = Vector2(player.pos)
+                            break
                 if trigger_pos is None:
                     for enemy in list(self.enemies):
                         if circle_rect_overlap(enemy.pos.x, enemy.pos.y, enemy.radius + MINE_TRIGGER_RADIUS, hazard.rect):
@@ -1322,161 +955,26 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
 
 
     def _update_camera(self, dt):
-        focus_pos = self.camera_focus
-        target = Vector2(
-            focus_pos.x - SCREEN_WIDTH * 0.5,
-            focus_pos.y - SCREEN_HEIGHT * 0.5,
-        )
-        
-        # Zoom dinâmico no multiplayer
-        if self.multiplayer and self.player2:
-            alive = self.alive_players()
-            if len(alive) == 2:
-                dist = alive[0].pos.distance_to(alive[1].pos)
-                scale = 1.0
-                if dist > 300:
-                    t = min(1.0, (dist - 300) / (CAMERA_ZOOM_MAX_DISTANCE - 300))
-                    scale = 1.0 - t * (1.0 - CAMERA_ZOOM_MIN_SCALE)
-                self.camera_zoom += (scale - self.camera_zoom) * dt * 2.0
-            else:
-                self.camera_zoom += (1.0 - self.camera_zoom) * dt * 2.0
-        else:
-            self.camera_zoom = 1.0
-
-        self.camera += (target - self.camera) * min(1.0, CAMERA_SMOOTHING * dt)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return camera_system.update_camera(self, dt)
     def random_offset(self, amount):
         angle = self.random.random() * math.tau
         distance = self.random.uniform(0, amount)
         return Vector2(math.cos(angle), math.sin(angle)) * distance
 
     def grant_chalice_fragment(self, key, pos=None):
-        if key not in getattr(self, "chalice_fragments", {}) or self.chalice_fragments[key]:
-            return False
-        self.chalice_fragments[key] = True
-        entry = next((item for item in CHALICE_FRAGMENTS if item["key"] == key), None)
-        name = entry["name"] if entry else key
-        pos = Vector2(pos if pos is not None else self.player.pos)
-        self.emit_particles(pos, count=46, color="#FACC15", speed=220, lifetime=0.55, size=5)
-        self.screen_shake = max(self.screen_shake, 9.0)
-        self.message = f"Fragmento do Calice coletado: {name}."
-        if all(self.chalice_fragments.values()) and not self.omni_kernel_active:
-            self._activate_omni_kernel(pos)
-        return True
+        return calice.grant_fragment(self, key, pos)
 
     def _update_chalice_system(self, dt):
-        if not self.chalice_fragments.get("world_hidden", False):
-            if self.player.pos.distance_squared_to(self.chalice_hidden_pos) < 90 * 90:
-                self.spawn_drop("chalice", self.chalice_hidden_pos, "world_hidden")
-                self.chalice_hidden_pos = Vector2(999999, 999999)
-        total_kills = sum(p.kills for p in self.players)
-        if total_kills >= CHALICE_KILL_TARGET or getattr(self, "combo_count", 0) >= CHALICE_COMBO_TARGET:
-            self.grant_chalice_fragment("combat_mark", self.player.pos)
-        if self.time_alive >= CHALICE_TIME_TARGET:
-            self.grant_chalice_fragment("time_mark", self.player.pos)
-        if self.omni_active_cooldown > 0:
-            was_cooling = self.omni_active_cooldown
-            self.omni_active_cooldown = max(0.0, self.omni_active_cooldown - dt)
-            if was_cooling > 0 and self.omni_active_cooldown <= 0:
-                for player in self.alive_players():
-                    self.add_alert(player.pos, "OMNI PRONTO", "#FACC15")
-                self.message = "Omni-Kernel recarregado."
-        if self.omni_time_freeze_timer > 0:
-            self.omni_time_freeze_timer = max(0.0, self.omni_time_freeze_timer - dt)
-        if self.omni_kernel_active:
-            self.omni_orbital_timer -= dt
-            if self.omni_orbital_timer <= 0:
-                self._fire_omni_orbital_laser()
-                self.omni_orbital_timer = OMNI_ORBITAL_COOLDOWN
+        return calice.update_progress(self, dt)
 
     def _activate_omni_kernel(self, pos):
-        self.omni_kernel_active = True
-        for player in self.players:
-            player.max_health += 120
-            player.health = player.max_health
-            player.damage_bonus += 0.60
-            player.attack_rate_bonus += 0.45
-            player.speed_bonus += 0.35
-            player.sword_range_bonus += 0.45
-            player.special_gain_bonus += 1.0
-            player.vampirism += 8.0
-        self.item_events.append({"type": "explosion", "pos": Vector2(pos), "radius": 360, "damage": 0, "age": 0.0, "duration": 0.7, "owner": 0})
-        self.item_events.append({"type": "omni_burst", "pos": Vector2(pos), "radius": 280, "age": 0.0, "duration": 1.0, "color": "#FACC15"})
-        self.emit_particles(pos, count=120, color="#FACC15", speed=390, lifetime=0.9, size=7)
-        self.screen_shake = max(self.screen_shake, 24.0)
-        for player in self.players:
-            self.add_alert(player.pos, "OMNI PRONTO", "#FACC15")
-        self.message = "OMNI-KERNEL desperto: o Calice da Singularidade esta completo!"
+        return omni_kernel.activate(self, pos)
 
     def _fire_omni_orbital_laser(self):
-        center = Vector2(self.camera_focus)
-        angle = self.random.uniform(-0.7, 0.7)
-        direction = Vector2(math.cos(angle), math.sin(angle))
-        start = center - direction * 720 + direction.rotate(90) * self.random.uniform(-260, 260)
-        end = start + direction * 1500
-        self._apply_laser_damage(start, end, 74, 155, damage_player=False, killer_index=0, knockback=520)
-        self.item_events.append({"type": "laser", "start": start, "end": end, "width": 74, "age": 0.0, "duration": 0.32, "color": "#FACC15"})
-        self.screen_shake = max(self.screen_shake, 10.0)
+        return omni_kernel.fire_orbital_laser(self)
 
     def try_omni_active(self):
-        if not self.omni_kernel_active:
-            return False
-        if self.omni_active_cooldown > 0:
-            self.message = f"Parada temporal recarregando: {self.omni_active_cooldown:.0f}s."
-            return False
-        self.omni_time_freeze_timer = OMNI_TIME_FREEZE_DURATION
-        self.omni_active_cooldown = OMNI_TIME_FREEZE_COOLDOWN
-        for player in self.alive_players():
-            self.item_events.append({
-                "type": "omni_burst",
-                "pos": Vector2(player.pos),
-                "radius": 220,
-                "age": 0.0,
-                "duration": 1.1,
-                "color": "#BAE6FD",
-            })
-            self.add_alert(player.pos, "TEMPO CONGELADO", "#BAE6FD")
-        self.emit_particles(self.camera_focus, count=90, color="#BAE6FD", speed=260, lifetime=0.65, size=5)
-        self.screen_shake = max(self.screen_shake, 18.0)
-        self.message = "Omni-Kernel: o tempo dos inimigos foi quebrado!"
-        return True
+        return omni_kernel.try_active(self)
 
 
     # ------------------------------------------------------------------ #
@@ -1632,80 +1130,13 @@ class GameLogic(CombatManager, EnemyManager, ItemManager, QuestManager):
         self.player_constructs = alive
 
     def spawn_altar(self):
-        angle = self.random.random() * math.tau
-        distance = self.random.uniform(400.0, 600.0)
-        spawn_pos = self.player.pos + Vector2(math.cos(angle), math.sin(angle)) * distance
-        
-        # Ensure position is inside world boundaries
-        spawn_pos = self.world.move_circle(spawn_pos, 24.0, Vector2(0, 0))
-        
-        kinds = ["weapon_altar", "stamps_altar", "skill_altar", "stat_altar", "black_market_altar"]
-        if getattr(self, "black_market_cooldown", 0.0) > 0:
-            kinds.remove("black_market_altar")
-        kind = self.random.choice(kinds)
-        
-        try:
-            from .entities import Altar
-        except ImportError:
-            from Sobrevivencia.core.entities import Altar
-            
-        new_altar = Altar(pos=spawn_pos, kind=kind)
-        self.altars.append(new_altar)
-        
-        names = {
-            "weapon_altar": "Armas (Inventario)",
-            "stamps_altar": "Selos",
-            "skill_altar": "Habilidades (Passivas)",
-            "stat_altar": "Status",
-            "black_market_altar": "Mercado Negro",
-        }
-        self.message = f"Um Altar de {names[kind]} se manifestou na arena!"
-        if hasattr(self, 'add_floater'):
-            self.add_floater(spawn_pos, "ALTAR", COLORS["special"])
+        return altar_system.spawn_altar(self)
 
     def _update_altars(self, dt):
-        alive = []
-        for altar in self.altars:
-            altar.age += dt
-            if altar.hit_flash > 0:
-                altar.hit_flash -= dt
-            
-            if altar.active:
-                alive.append(altar)
-                
-                # Check collision with alive players
-                if self.active_altar is None:
-                    for player in self.alive_players():
-                        if player.pos.distance_to(altar.pos) <= player.radius + altar.radius:
-                            self.active_altar = altar
-                            self.time_scale = 0.2  # Bullet Time / Slow motion
-                            self.menu_player_index = player.player_index
-                            self.menu_just_opened_by_altar = altar.kind
-                            self.message = "Altar ativado! Selecione seus aprimoramentos."
-                            self.emit_particles(altar.pos, count=25, color="#F59E0B", speed=150)
-                            break
-            else:
-                self.emit_particles(altar.pos, count=30, color="#EF4444", speed=200)
-                
-        self.altars = alive
-        
-        if getattr(self, 'altar_spawn_timer', 0.0) > 0.0:
-            self.altar_spawn_timer -= dt
-            if self.altar_spawn_timer <= 0.0:
-                self.spawn_altar()
-                self.altar_spawn_timer = 90.0
+        return altar_system.update_altars(self, dt)
 
     def finish_altar_interaction(self, destroy=True):
-        altar = getattr(self, "active_altar", None)
-        if altar is not None and destroy:
-            if altar.kind == "black_market_altar":
-                self.black_market_cooldown = 60.0
-            altar.active = False
-            self.emit_particles(altar.pos, count=36, color="#F59E0B", speed=220)
-            self.screen_shake = max(self.screen_shake, 10.0)
-        self.active_altar = None
-        self.menu_just_opened_by_altar = None
-        self.time_scale = 1.0
+        return altar_system.finish_altar_interaction(self, destroy)
 
     def roll_upgrade_rng(self, player_index, attempted_levels=1):
         attempted_levels = max(1, int(attempted_levels))

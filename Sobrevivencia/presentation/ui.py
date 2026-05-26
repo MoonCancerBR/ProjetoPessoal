@@ -134,11 +134,12 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
         # Escala dinamica: base 1100x720, ajusta fontes pela menor dimensao.
         ui_scale = max(0.85, min(1.25, min(SCREEN_WIDTH / 1100.0, SCREEN_HEIGHT / 720.0)))
         self.assets = AssetRegistry(ui_scale=ui_scale)
-        self.font_big = self.assets.font("Segoe UI", 42, bold=True)
-        self.font_title = self.assets.font("Segoe UI", 26, bold=True)
-        self.font = self.assets.font("Segoe UI", 18)
-        self.font_small = self.assets.font("Segoe UI", 16)
-        self.font_tiny = self.assets.font("Segoe UI", 13)
+        arcade_font = "Consolas" if PIXEL_ART_MODE else "Segoe UI"
+        self.font_big = self.assets.font(arcade_font, 42, bold=True)
+        self.font_title = self.assets.font(arcade_font, 26, bold=True)
+        self.font = self.assets.font(arcade_font, 18)
+        self.font_small = self.assets.font(arcade_font, 16)
+        self.font_tiny = self.assets.font(arcade_font, 13)
         self.effect_cache = EffectSurfaceCache()
         self.animation_manager = AnimationManager()
         self.particle_manager = ParticleManager()
@@ -247,6 +248,29 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
     def _draw_star(self, center, outer, inner, color, points=5, angle_offset=-math.pi / 2):
         draw_star(self.screen, center, outer, inner, color, points=points, angle_offset=angle_offset)
 
+    def _pixelate_world_surface(self):
+        if not PIXEL_ART_MODE:
+            return
+
+        factor = max(1, int(PIXEL_ART_DOWNSCALE))
+        low_size = (max(1, SCREEN_WIDTH // factor), max(1, SCREEN_HEIGHT // factor))
+        low_res = pygame.transform.scale(self.screen, low_size)
+        self.screen.blit(pygame.transform.scale(low_res, (SCREEN_WIDTH, SCREEN_HEIGHT)), (0, 0))
+
+    def _apply_arcade_scanlines(self, surface):
+        if not PIXEL_ART_MODE:
+            return surface
+        scanlines = getattr(self, "_pixel_scanline_overlay", None)
+        if scanlines is None:
+            scanlines = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            for y in range(1, SCREEN_HEIGHT, 4):
+                pygame.draw.rect(scanlines, (0, 0, 0, 16), (0, y, SCREEN_WIDTH, 1))
+            for x in range(0, SCREEN_WIDTH, 16):
+                pygame.draw.line(scanlines, (255, 255, 255, 5), (x, 0), (x, SCREEN_HEIGHT))
+            self._pixel_scanline_overlay = scanlines
+        surface.blit(scanlines, (0, 0))
+        return surface
+
     def _collect_light_sources(self, game, camera):
         lights = []
         
@@ -256,7 +280,7 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                 px, py = self.world_to_screen(p.pos, camera)
                 # Aura Luminosa do Sobrevivente (Fase 2)
                 # Outer radius: 180, inner radius: 80.
-                lights.append((px, py, 180.0, 1.0, 1.0, 1.0, 0.9))
+                lights.append((px, py, 340.0, 1.0, 1.0, 0.98, 0.78))
 
         # 2. Constructs (turrets, barriers, torches)
         time_val = game.time_alive
@@ -264,7 +288,7 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
             cx, cy = self.world_to_screen(c.pos, camera)
             if c.kind == "torch":
                 glow_pulse = 1.0 + 0.08 * math.sin(time_val * 15.0 + math.cos(time_val * 6.0))
-                lights.append((cx, cy, 160.0 * glow_pulse, 1.0, 0.98, 0.57, 0.23))
+                lights.append((cx, cy, 230.0 * glow_pulse, 1.0, 0.98, 0.68, 0.28))
             elif c.kind == "turret":
                 lights.append((cx, cy, 90.0, 1.0, 0.98, 0.75, 0.14))
             elif c.kind == "barrier":
@@ -309,16 +333,20 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                     color = (0.98, 0.57, 0.23)
                 else:
                     color = (0.99, 0.94, 0.54)
-            lights.append((px, py, proj.radius + 10.0, 0.9, *color))
+            lights.append((px, py, max(28.0, proj.radius + 18.0), 1.0, *color))
 
         # 6. Drops
         for drop in getattr(game, "drops", []):
             dx, dy = self.world_to_screen(drop.pos, camera)
             if getattr(drop, "kind", "") == "coin":
                 color = (0.99, 0.88, 0.28)
+            elif getattr(drop, "kind", "") == "item_box":
+                color = (0.16, 0.84, 1.0)
+            elif getattr(drop, "kind", "") == "stamp":
+                color = (0.86, 0.42, 1.0)
             else:
                 color = (0.75, 0.52, 0.99)
-            lights.append((dx, dy, 25.0, 1.0, *color))
+            lights.append((dx, dy, 42.0, 1.0, *color))
 
         return lights
 
@@ -423,6 +451,8 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                 pygame.draw.circle(self.screen, (34, 211, 238), (dx, dy), 5)
                 pygame.draw.circle(self.screen, (255, 255, 255), (dx, dy), 2)
 
+        self._pixelate_world_surface()
+        self._draw_altar_labels(game, camera)
         self._draw_floaters(game, camera)
         self._draw_hud(game)
         self._draw_minimap(game)
@@ -494,6 +524,7 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
             
         if draw_gui:
             self.gui_manager.draw_ui(surf_to_draw)
+        surf_to_draw = self._apply_arcade_scanlines(surf_to_draw)
         # Present via ModernGL if available, otherwise CPU blit
         if self.ctx:
             try:

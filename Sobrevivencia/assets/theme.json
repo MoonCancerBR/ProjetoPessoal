@@ -1,35 +1,35 @@
 {
     "defaults": {
         "colours": {
-            "normal_bg": "#1E293BCC",
-            "hovered_bg": "#334155CC",
-            "disabled_bg": "#0F172ACC",
-            "selected_bg": "#3B82F680",
-            "dark_bg": "#0F172AEE",
-            "normal_text": "#E2E8F0",
-            "hovered_text": "#F8FAFC",
-            "disabled_text": "#64748B",
+            "normal_bg": "#111827EE",
+            "hovered_bg": "#1B2440EE",
+            "disabled_bg": "#05050ACC",
+            "selected_bg": "#28D7FF80",
+            "dark_bg": "#05050AF4",
+            "normal_text": "#FFF7D6",
+            "hovered_text": "#FFFFFF",
+            "disabled_text": "#5E6A86",
             "selected_text": "#FFFFFF",
-            "active_border": "#60A5FA",
-            "normal_border": "#334155",
-            "disabled_border": "#1E293B",
-            "hovered_border": "#60A5FA",
-            "link_text": "#38BDF8",
-            "link_hover": "#7DD3FC",
-            "link_selected": "#0EA5E9",
-            "text_cursor": "#F8FAFC",
-            "filled_bar": "#38BDF8",
-            "unfilled_bar": "#1E293B"
+            "active_border": "#FFD447",
+            "normal_border": "#414A78",
+            "disabled_border": "#1B2440",
+            "hovered_border": "#28D7FF",
+            "link_text": "#28D7FF",
+            "link_hover": "#7DF9FF",
+            "link_selected": "#35F06B",
+            "text_cursor": "#FFF7D6",
+            "filled_bar": "#28D7FF",
+            "unfilled_bar": "#1B2440"
         },
         "font": {
-            "name": "Segoe UI",
+            "name": "Consolas",
             "size": "15",
             "bold": "0",
             "italic": "0"
         },
-        "border_width": "1",
-        "shadow_width": "2",
-        "border_radius": "8"
+        "border_width": "2",
+        "shadow_width": "0",
+        "border_radius": "0"
     },
     "#inventory_window": {
         "colours": {
@@ -39,18 +39,18 @@
     },
     "button": {
         "colours": {
-            "normal_bg": "#1E293B",
-            "hovered_bg": "#3B82F640",
-            "selected_bg": "#3B82F6",
-            "normal_border": "#475569",
-            "hovered_border": "#60A5FA",
-            "normal_text": "#CBD5E1",
+            "normal_bg": "#111827",
+            "hovered_bg": "#202A4B",
+            "selected_bg": "#28D7FF",
+            "normal_border": "#414A78",
+            "hovered_border": "#FFD447",
+            "normal_text": "#FFF7D6",
             "hovered_text": "#FFFFFF",
-            "selected_text": "#FFFFFF"
+            "selected_text": "#05050A"
         },
         "misc": {
-            "border_width": "1",
-            "border_radius": "6"
+            "border_width": "2",
+            "border_radius": "0"
         }
     },
     "label": {
@@ -61,12 +61,12 @@
     },
     "panel": {
         "colours": {
-            "dark_bg": "#1E293BCC",
-            "normal_border": "#334155"
+            "dark_bg": "#111827EE",
+            "normal_border": "#414A78"
         },
         "misc": {
-            "border_width": "1",
-            "border_radius": "8"
+            "border_width": "2",
+            "border_radius": "0"
         }
     },
     "scroll_container": {

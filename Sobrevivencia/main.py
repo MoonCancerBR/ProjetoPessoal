@@ -8,20 +8,26 @@ from pygame.math import Vector2
 
 if __package__:
     from .config.config_loader import load_settings
-    from .config.runtime import configure_file_logging, logger
+    from .config.runtime import logger
     from .data.constants import *
     from .data.items import BASE_ITEM_KEYS
     from .data.encyclopedia import ENCYCLOPEDIA_CATEGORIES
     from .core.game_logic import GameLogic
-    from .presentation.ui import UI
+    from .presentation.bootstrap import attach_virtual_screen, init_pygame_runtime
+    from .presentation.altar_routing import handle_altar_menu_transition
+    from .presentation.runtime_loop import present_virtual_screen, scaled_event_pos, scaled_mouse_pos, update_aim_state
+    from .presentation.state_rendering import render_state
 else:
     from Sobrevivencia.config.config_loader import load_settings
-    from Sobrevivencia.config.runtime import configure_file_logging, logger
+    from Sobrevivencia.config.runtime import logger
     from Sobrevivencia.data.constants import *
     from Sobrevivencia.data.items import BASE_ITEM_KEYS
     from Sobrevivencia.data.encyclopedia import ENCYCLOPEDIA_CATEGORIES
     from Sobrevivencia.core.game_logic import GameLogic
-    from Sobrevivencia.presentation.ui import UI
+    from Sobrevivencia.presentation.bootstrap import attach_virtual_screen, init_pygame_runtime
+    from Sobrevivencia.presentation.altar_routing import handle_altar_menu_transition
+    from Sobrevivencia.presentation.runtime_loop import present_virtual_screen, scaled_event_pos, scaled_mouse_pos, update_aim_state
+    from Sobrevivencia.presentation.state_rendering import render_state
 
 
 if __package__:
@@ -38,19 +44,7 @@ else:
 class SobrevivenciaGame(InputManager, MenuController):
     def run(self):
         settings = load_settings()
-        pygame.init()
-        pygame.font.init()
-        pygame.freetype.init()
-        pygame.joystick.init()
-
-        configure_file_logging("game.log", level="INFO")
-        logger.info("Sistema inicializado. Iniciando SobrevivenciaGame...")
-        pygame.display.set_caption("Sobrevivencia - Top Down Survival")
-        fullscreen = bool(settings.get("fullscreen", False))
-        screen, fullscreen = self._set_display_mode(fullscreen, None)
-        clock = pygame.time.Clock()
-        ui = UI(screen)
-        menu_manager = MenuManager(screen)
+        screen, fullscreen, clock, ui, menu_manager = init_pygame_runtime(settings, self._set_display_mode)
 
         # Menu Callbacks
         def on_start_click():
@@ -170,10 +164,7 @@ class SobrevivenciaGame(InputManager, MenuController):
         aim_mode = "mouse"
         running = True
         
-        # Virtual Screen para Smoothscale Fullscreen
-        self.virtual_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        ui.screen = self.virtual_screen
-        menu_manager.screen = self.virtual_screen
+        attach_virtual_screen(self, ui, menu_manager)
         self.active_device = "keyboard" # "keyboard" ou "joystick"
         self.control_preference = "auto" # "auto", "keyboard", "joystick"
 
@@ -185,25 +176,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                     logger.info(f"Loop running... State: {state}")
             
             final_screen = pygame.display.get_surface()
-            raw_mouse_pos = pygame.mouse.get_pos()
-            fw, fh = final_screen.get_size()
-            vw, vh = self.virtual_screen.get_size()
-            if fw != vw or fh != vh:
-                mouse_pos = (int(raw_mouse_pos[0] * vw / fw), int(raw_mouse_pos[1] * vh / fh))
-            else:
-                mouse_pos = raw_mouse_pos
-                
-            joystick_aim = self._joystick_aim_vector()
-            if joystick_aim.length_squared() > 0:
-                joystick_aim_dir = joystick_aim.normalize()
-                aim_mode = "joystick"
-            aim_pos = self._aim_screen_pos(game, joystick_aim_dir) if aim_mode == "joystick" and not game.multiplayer else mouse_pos
-            aim_world = ui.screen_to_world(aim_pos, game.camera)
-            p2_aim_screen = None
-            p2_aim_world = None
-            if game.multiplayer and game.player2 is not None:
-                p2_aim_screen = self._aim_screen_pos_for(game, game.player2, joystick_aim_dir)
-                p2_aim_world = ui.screen_to_world(p2_aim_screen, game.camera)
+            mouse_pos = scaled_mouse_pos(final_screen, self.virtual_screen)
+            joystick_aim_dir, aim_mode, aim_pos, aim_world, p2_aim_screen, p2_aim_world = update_aim_state(
+                self, game, ui, mouse_pos, joystick_aim_dir, aim_mode
+            )
 
             ui.sync_menu_windows(state)
             for event in self._poll_events(game):
@@ -218,8 +194,25 @@ class SobrevivenciaGame(InputManager, MenuController):
                         elif action == "toggle_menu_player":
                             game.menu_player_index = 1 - game.menu_player_index
                             inventory_selected = 0
+                        elif action.startswith("stamp_select:"):
+                            inventory_selected = int(action.split(":", 1)[1])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "black_market_altar":
+                                player = game.get_player(game.menu_player_index)
+                                reserve_start = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", []))
+                                if inventory_selected >= reserve_start:
+                                    self._toggle_stamp_sale_mark(game, inventory_selected)
                         elif action.startswith("shop_select:"):
                             inventory_selected = int(action.split(":", 1)[1])
+                        elif action.startswith("item_select:"):
+                            inventory_selected = int(action.split(":", 1)[1])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "black_market_altar":
+                                inv = game.get_inventory(game.menu_player_index)
+                                raw_items = inv.item_list()
+                                active_items = [item for item in raw_items if inv.is_active(item.slot_key)]
+                                if inventory_selected >= len(active_items) and inventory_selected < len(raw_items):
+                                    self._toggle_inventory_sale_mark(game, raw_items[inventory_selected].slot_key)
                         elif action == "shop_buy":
                             shop_keys = list(BASE_ITEM_KEYS)
                             if inventory_selected < len(shop_keys):
@@ -462,9 +455,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                     clicked_button = False
                     if event.button == 1:
                         final_screen = pygame.display.get_surface()
-                        fw, fh = final_screen.get_size()
-                        vw, vh = self.virtual_screen.get_size()
-                        ev_pos = (int(event.pos[0] * vw / fw), int(event.pos[1] * vh / fh)) if (fw != vw or fh != vh) else event.pos
+                        ev_pos = scaled_event_pos(event.pos, final_screen, self.virtual_screen)
                         for action, rect in button_rects:
                             if rect.collidepoint(ev_pos):
                                 clicked_button = True
@@ -1791,147 +1782,102 @@ class SobrevivenciaGame(InputManager, MenuController):
                         p2_aim_world = game.player2.pos - aim_dir2
 
                 game.update(dt, move, aim_world, move_2, p2_aim_world)
-                if getattr(game, "active_altar", None) is not None and getattr(game, "menu_just_opened_by_altar", None) is not None:
-                    kind = game.menu_just_opened_by_altar
-                    game.menu_just_opened_by_altar = None
-                    menu_player = getattr(game, "menu_player_index", 0)
-                    for p in (0, 1):
-                        special_holding[p] = False
-                        special_hold_triggered[p] = False
-                        special_combo_checked[p] = False
-                        combo_holding[p] = False
-                        combo_hold_triggered[p] = False
-                    if kind == "weapon_altar":
-                        state = "inventory"
-                        inventory_tab = "items"
-                        inventory_selected = min(inventory_selected, max(0, len(game.get_inventory(menu_player).item_list()) - 1))
-                    elif kind == "stamps_altar":
-                        state = "inventory"
-                        inventory_tab = "stamps"
-                        player = game.get_player(menu_player)
-                        stamp_count = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])) + len(player.stamp_reserve)
-                        inventory_selected = min(inventory_selected, max(0, stamp_count - 1))
-                    elif kind == "black_market_altar":
-                        state = "inventory"
-                        inventory_tab = "shop"
-                        inventory_selected = 0
-                    elif kind == "skill_altar":
-                        skills_return_state = "playing"
-                        state = "skills"
-                        skill_selected = min(skill_selected, max(0, len(game.get_player(menu_player).passives) - 1))
-                    elif kind == "stat_altar":
-                        stat_shop_return_state = "playing"
-                        state = "stat_shop"
-                        stat_shop_selected = 0
+                state, inventory_tab, inventory_selected, skill_selected, stat_shop_selected, skills_return_state, stat_shop_return_state = handle_altar_menu_transition(
+                    game,
+                    state,
+                    inventory_tab,
+                    inventory_selected,
+                    skill_selected,
+                    stat_shop_selected,
+                    skills_return_state,
+                    stat_shop_return_state,
+                    special_holding,
+                    special_hold_triggered,
+                    special_combo_checked,
+                    combo_holding,
+                    combo_hold_triggered,
+                )
                 if game.level_up_pending:
                     state = "upgrade"
                     upgrade_selected = 0
                 elif game.game_over:
                     state = "game_over"
                     game_over_selected = 0
-                ui.render_game(game, aim_pos, dt=dt, flip=False, aim_from_joystick=aim_mode == "joystick", p2_aim_pos=p2_aim_screen)
-                button_rects = []
-            elif state == "start":
-                button_rects = ui.render_start(mouse_pos, start_selected)
-            elif state == "mode_select":
-                button_rects = ui.render_mode_select(mouse_pos, mode_selected, self._joystick_count())
-            elif state == "character_select":
-                selected_index = character_selected_2 if multiplayer_selected and character_select_player == 1 else character_selected
-                char_class = list(CHARACTERS.keys())[selected_index]
-                char_class_2 = list(CHARACTERS.keys())[character_selected_2]
-                button_rects = ui.render_character_select(
-                    char_class,
-                    mouse_pos,
-                    multiplayer_selected,
-                    char_class_2,
-                    character_select_player,
+                selections = {
+                    "start": start_selected,
+                    "pause": pause_selected,
+                    "upgrade": upgrade_selected,
+                    "inventory": inventory_selected,
+                    "construction": construction_selected,
+                    "skill": skill_selected,
+                    "settings": settings_selected,
+                    "settings_slot": settings_slot,
+                    "fusion_confirm": fusion_confirm_selected,
+                    "game_over": game_over_selected,
+                    "stat_shop": stat_shop_selected,
+                    "mode": mode_selected,
+                    "multiplayer": multiplayer_selected,
+                    "character": character_selected,
+                    "character_2": character_selected_2,
+                    "character_player": character_select_player,
+                    "encyclopedia": encyclopedia_selected,
+                    "encyclopedia_category": encyclopedia_category,
+                    "encyclopedia_query": encyclopedia_query,
+                }
+                button_rects, selections, inventory_tab = render_state(
+                    self, ui, game, state, mouse_pos, aim_pos, aim_mode, p2_aim_screen, dt,
+                    controls, selections, fullscreen, capture_binding, inventory_tab
                 )
-            elif state == "paused":
-                button_rects = ui.render_pause(game, PAUSE_OPTIONS, pause_selected, mouse_pos)
-            elif state == "commands":
-                button_rects = ui.render_commands(mouse_pos, self._command_lines(controls))
-            elif state == "progression":
-                button_rects = ui.render_progression(game, mouse_pos)
-            elif state == "settings":
-                settings_selected = min(settings_selected, len(CONTROL_ACTIONS) - 1)
-                button_rects = ui.render_settings(
-                    self._control_rows(controls),
-                    settings_selected,
-                    settings_slot,
-                    capture_binding,
-                    fullscreen,
-                    self.control_preference,
-                    self._joystick_count(),
-                    mouse_pos,
-                )
-            elif state == "encyclopedia":
-                entries = ui.filtered_encyclopedia_entries(encyclopedia_category, encyclopedia_query)
-                encyclopedia_selected = min(encyclopedia_selected, max(0, len(entries) - 1))
-                button_rects = ui.render_encyclopedia(encyclopedia_selected, mouse_pos, encyclopedia_category, encyclopedia_query)
-            elif state == "stat_shop":
-                button_rects = ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-            elif state == "constructions":
-                construction_selected = min(construction_selected, max(0, len(ui.construction_catalog()) - 1))
-                button_rects = ui.render_constructions(game, construction_selected, mouse_pos)
-            elif state == "skills":
-                skill_selected = min(skill_selected, max(0, len(game.get_player(game.menu_player_index).passives) - 1))
-                button_rects = ui.render_skills(game, skill_selected, mouse_pos)
-            elif state == "upgrade":
-                button_rects = ui.render_upgrade(game, upgrade_selected, mouse_pos)
-            elif state == "inventory":
-                inv = game.get_inventory(game.menu_player_index)
-                if inventory_tab == "shop":
-                    inventory_selected = min(inventory_selected, max(0, len(list(BASE_ITEM_KEYS)) - 1))
-                elif inventory_tab == "stamps":
-                    player = game.get_player(game.menu_player_index)
-                    stamp_count = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])) + len(player.stamp_reserve)
-                    inventory_selected = min(inventory_selected, max(0, stamp_count - 1))
-                else:
-                    inventory_selected = min(inventory_selected, max(0, len(inv.item_list()) - 1))
-                button_rects = ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-            elif state == "fusion_confirm":
-                inventory_selected = min(inventory_selected, max(0, len(game.get_inventory(game.menu_player_index).item_list()) - 1))
-                button_rects = ui.render_fusion_confirm(game, inventory_selected, fusion_confirm_selected, mouse_pos)
-            elif state == "stamp_fusion_confirm":
-                player = game.get_player(game.menu_player_index)
-                stamp_count = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])) + len(player.stamp_reserve)
-                inventory_selected = min(inventory_selected, max(0, stamp_count - 1))
-                button_rects = ui.render_stamp_fusion_confirm(game, inventory_selected, fusion_confirm_selected, mouse_pos)
-            elif state == "point_confirm":
-                if self.point_confirm_return == "stat_shop":
-                    ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-                elif self.point_confirm_return == "skills":
-                    ui.render_skills(game, skill_selected, mouse_pos)
-                elif self.point_confirm_return == "inventory":
-                    ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-                self._refresh_point_confirm_quantity(game)
-                button_rects = ui.render_point_confirm(
-                    game,
-                    self.point_confirm_cost,
-                    self.point_confirm_msg,
-                    self.point_confirm_selected,
-                    mouse_pos,
-                    self.point_confirm_quantity,
-                    self.point_confirm_max_quantity,
-                    self.point_confirm_total_cost,
-                )
-            elif state == "rng_result":
-                if self.point_confirm_return == "stat_shop":
-                    ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-                elif self.point_confirm_return == "skills":
-                    ui.render_skills(game, skill_selected, mouse_pos)
-                elif self.point_confirm_return == "inventory":
-                    ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-                button_rects = ui.render_rng_result(game, mouse_pos)
-            elif state == "game_over":
-                button_rects = ui.render_game_over(game, mouse_pos, game_over_selected)
+                start_selected = selections["start"]
+                pause_selected = selections["pause"]
+                upgrade_selected = selections["upgrade"]
+                inventory_selected = selections["inventory"]
+                construction_selected = selections["construction"]
+                skill_selected = selections["skill"]
+                settings_selected = selections["settings"]
+                game_over_selected = selections["game_over"]
+                stat_shop_selected = selections["stat_shop"]
+                encyclopedia_selected = selections["encyclopedia"]
+                present_virtual_screen(self.virtual_screen)
+                continue
 
-            # Final Smoothscale Render
-            if fw != vw or fh != vh:
-                pygame.transform.smoothscale(self.virtual_screen, (fw, fh), final_screen)
             else:
-                final_screen.blit(self.virtual_screen, (0, 0))
-            pygame.display.flip()
+                selections = {
+                    "start": start_selected,
+                    "pause": pause_selected,
+                    "upgrade": upgrade_selected,
+                    "inventory": inventory_selected,
+                    "construction": construction_selected,
+                    "skill": skill_selected,
+                    "settings": settings_selected,
+                    "settings_slot": settings_slot,
+                    "fusion_confirm": fusion_confirm_selected,
+                    "game_over": game_over_selected,
+                    "stat_shop": stat_shop_selected,
+                    "mode": mode_selected,
+                    "multiplayer": multiplayer_selected,
+                    "character": character_selected,
+                    "character_2": character_selected_2,
+                    "character_player": character_select_player,
+                    "encyclopedia": encyclopedia_selected,
+                    "encyclopedia_category": encyclopedia_category,
+                    "encyclopedia_query": encyclopedia_query,
+                }
+                button_rects, selections, inventory_tab = render_state(
+                    self, ui, game, state, mouse_pos, aim_pos, aim_mode, p2_aim_screen, dt,
+                    controls, selections, fullscreen, capture_binding, inventory_tab
+                )
+                start_selected = selections["start"]
+                pause_selected = selections["pause"]
+                upgrade_selected = selections["upgrade"]
+                inventory_selected = selections["inventory"]
+                construction_selected = selections["construction"]
+                skill_selected = selections["skill"]
+                settings_selected = selections["settings"]
+                game_over_selected = selections["game_over"]
+                stat_shop_selected = selections["stat_shop"]
+                encyclopedia_selected = selections["encyclopedia"]
+                present_virtual_screen(self.virtual_screen)
 
         pygame.display.quit()
         pygame.joystick.quit()

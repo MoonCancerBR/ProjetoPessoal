@@ -134,12 +134,32 @@ class WorldRendererMixin:
             elif hazard.kind == "mine":
                 center = screen_rect.center
                 radius = int(13 + pulse * 3)
-                pygame.draw.circle(overlay, (248, 113, 113, int(34 + 36 * pulse)), center, radius + 13)
-                pygame.draw.circle(overlay, (127, 29, 29, 230), center, radius)
-                pygame.draw.circle(overlay, (248, 113, 113, 220), center, radius + 4, 2)
-                pygame.draw.circle(overlay, (254, 226, 226, 220), center, max(3, radius // 3))
-                pygame.draw.line(overlay, (254, 226, 226, 190), (center[0] - 6, center[1]), (center[0] + 6, center[1]), 2)
-                pygame.draw.line(overlay, (254, 226, 226, 190), (center[0], center[1] - 6), (center[0], center[1] + 6), 2)
+                is_dash_mine = str(getattr(hazard, "id", "")).startswith("dash_mine:")
+                if is_dash_mine:
+                    glow = (34, 211, 238, int(38 + 34 * pulse))
+                    body = (8, 47, 73, 240)
+                    ring = (103, 232, 249, 220)
+                    core = (250, 204, 21, 230)
+                    edge = (255, 255, 255, 210)
+                    points = [
+                        (center[0], center[1] - radius - 2),
+                        (center[0] + radius + 6, center[1]),
+                        (center[0], center[1] + radius + 2),
+                        (center[0] - radius - 6, center[1]),
+                    ]
+                    pygame.draw.circle(overlay, glow, center, radius + 14)
+                    pygame.draw.polygon(overlay, body, points)
+                    pygame.draw.polygon(overlay, ring, points, 2)
+                    pygame.draw.circle(overlay, core, center, max(3, radius // 3))
+                    pygame.draw.line(overlay, edge, (center[0] - 7, center[1] - 7), (center[0] + 7, center[1] + 7), 2)
+                    pygame.draw.line(overlay, edge, (center[0] - 7, center[1] + 7), (center[0] + 7, center[1] - 7), 2)
+                else:
+                    pygame.draw.circle(overlay, (248, 113, 113, int(34 + 36 * pulse)), center, radius + 13)
+                    pygame.draw.circle(overlay, (127, 29, 29, 230), center, radius)
+                    pygame.draw.circle(overlay, (248, 113, 113, 220), center, radius + 4, 2)
+                    pygame.draw.circle(overlay, (254, 226, 226, 220), center, max(3, radius // 3))
+                    pygame.draw.line(overlay, (254, 226, 226, 190), (center[0] - 6, center[1]), (center[0] + 6, center[1]), 2)
+                    pygame.draw.line(overlay, (254, 226, 226, 190), (center[0], center[1] - 6), (center[0], center[1] + 6), 2)
         self.screen.blit(overlay, (0, 0))
 
     def _draw_world_objects(self, game, camera):
@@ -227,4 +247,40 @@ class WorldRendererMixin:
             label = labels.get(altar.kind, "ALTAR")
             font = self.font_small
             if font:
-                font.render_to(self.screen, (x - font.get_rect(label, size=9).width // 2, int(core_y) - 16), label, accent, size=9)
+                text_rect = font.get_rect(label, size=13)
+                label_rect = pygame.Rect(
+                    x - text_rect.width // 2 - 7,
+                    int(core_y) - 27,
+                    text_rect.width + 14,
+                    text_rect.height + 6,
+                )
+                pygame.draw.rect(self.screen, (3, 7, 18), label_rect)
+                pygame.draw.rect(self.screen, accent, label_rect, width=2)
+                font.render_to(
+                    self.screen,
+                    (label_rect.x + 7, label_rect.y + 3),
+                    label,
+                    (255, 247, 214),
+                    size=13,
+                )
+
+    def _draw_altar_labels(self, game, camera):
+        if not getattr(game, "altars", None) or not self.font_small:
+            return
+        labels = {
+            "weapon_altar": ("ALTAR DE ARMAS", "#EF4444"),
+            "stamps_altar": ("ALTAR DE SELOS", "#06B6D4"),
+            "skill_altar": ("ALTAR DE SKILLS", "#A78BFA"),
+            "stat_altar": ("ALTAR DE STATUS", "#F59E0B"),
+            "black_market_altar": ("MERCADO NEGRO", "#22C55E"),
+        }
+        for altar in game.altars:
+            if not altar.active:
+                continue
+            x, y = self.world_to_screen(altar.pos, camera)
+            label, color_hex = labels.get(altar.kind, ("ALTAR", "#FACC15"))
+            rect = self.font_small.get_rect(label, size=14)
+            box = pygame.Rect(x - rect.width // 2 - 8, y - int(altar.radius) - 34, rect.width + 16, rect.height + 8)
+            pygame.draw.rect(self.screen, (3, 7, 18), box)
+            pygame.draw.rect(self.screen, hex_color(color_hex), box, width=2)
+            self.font_small.render_to(self.screen, (box.x + 8, box.y + 4), label, (255, 247, 214), size=14)

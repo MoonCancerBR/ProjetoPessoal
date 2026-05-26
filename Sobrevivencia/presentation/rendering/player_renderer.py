@@ -205,7 +205,7 @@ class PlayerRendererMixin:
         key = (player.char_class, "idle_0", size, angle)
         sprite = cache.get(key)
         if sprite is None:
-            sprite = pygame.transform.smoothscale(frame, (size, size))
+            sprite = pygame.transform.scale(frame, (size, size))
             sprite = pygame.transform.rotate(sprite, angle)
             cache[key] = sprite
         rect = sprite.get_rect(center=(int(center[0]), int(center[1])))

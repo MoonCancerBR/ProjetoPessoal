@@ -1,0 +1,2 @@
+"""Sistemas compartilhados de combate."""
+

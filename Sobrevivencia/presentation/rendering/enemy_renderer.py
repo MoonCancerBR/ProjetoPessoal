@@ -91,7 +91,8 @@ class EnemyRendererMixin:
                 2
             )
             if getattr(game, "light_level", 1.0) < 0.15:
-                pygame.draw.circle(self.screen, (254, 202, 202), (x, y), int(enemy.radius + 3), 2)
+                pygame.draw.circle(self.screen, (255, 247, 237), (x, y), int(enemy.radius + 6), 3)
+                pygame.draw.circle(self.screen, color, (x, y), int(enemy.radius + 11), 1)
 
             # =========================================================
             # MINIBOSS — COLOSSO RITUALÍSTICO

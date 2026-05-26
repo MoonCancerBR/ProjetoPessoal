@@ -150,9 +150,9 @@ class MenuManager:
         if pygame_menu is None:
             if not self.active_menu:
                 return
-            title_font = pygame.font.SysFont("Segoe UI", 48, bold=True)
-            subtitle_font = pygame.font.SysFont("Segoe UI", 20)
-            button_font = pygame.font.SysFont("Segoe UI", 30, bold=True)
+            title_font = pygame.font.SysFont("Consolas", 48, bold=True)
+            subtitle_font = pygame.font.SysFont("Consolas", 20)
+            button_font = pygame.font.SysFont("Consolas", 30, bold=True)
             title = title_font.render(self.active_menu["title"], True, hex_to_rgb(COLORS["upgrade"]))
             self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 140)))
             if self.active_menu["subtitle"]:

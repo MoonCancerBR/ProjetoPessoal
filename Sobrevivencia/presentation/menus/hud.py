@@ -820,24 +820,33 @@ class HudMenu:
             return None
         entries = CHALICE_FRAGMENTS
         collected = sum(1 for entry in entries if fragments.get(entry["key"], False))
-        icon = self._s(24)
-        gap = self._s(5)
-        w = self._s(58) + len(entries) * icon + (len(entries) - 1) * gap
-        h = self._s(34)
+        icon = self._s(26)
+        gap = self._s(4)
+        title_w = self._s(88)
+        w = title_w + len(entries) * icon + (len(entries) - 1) * gap + self._s(8)
+        h = self._s(42)
         rect = pygame.Rect(x, y, w, h)
-        self._draw_panel_back(rect, alpha=178, border=(120, 94, 28), radius=6)
-        self.font_tiny.render_to(self.screen, (x + self._s(8), y + self._s(5)), f"CALICE {collected}/7", (250, 204, 21))
-        ix = x + self._s(58)
+        complete = collected >= len(entries)
+        border = (255, 212, 71) if complete else (180, 136, 36)
+        self._draw_panel_back(rect, alpha=208, border=border, radius=3)
+        title_color = (255, 212, 71) if not complete else (53, 240, 107)
+        self.font_tiny.render_to(self.screen, (x + self._s(8), y + self._s(5)), "CALICE", title_color)
+        self.font_tiny.render_to(self.screen, (x + self._s(8), y + self._s(22)), f"{collected}/{len(entries)} FRAG", hex_color(COLORS["text"]))
+        ix = x + title_w
         for entry in entries:
             active = fragments.get(entry["key"], False)
-            color = (250, 204, 21) if active else (71, 85, 105)
-            text_color = (15, 23, 42) if active else (148, 163, 184)
-            pygame.draw.circle(self.screen, color, (ix + icon // 2, y + h // 2), icon // 2)
-            pygame.draw.circle(self.screen, (253, 224, 71) if active else (30, 41, 59), (ix + icon // 2, y + h // 2), icon // 2, 1)
+            color = (255, 212, 71) if active else (43, 52, 76)
+            border_color = (255, 247, 214) if active else (94, 105, 134)
+            text_color = (5, 5, 10) if active else (167, 176, 199)
+            slot = pygame.Rect(ix, y + self._s(8), icon, icon)
+            pygame.draw.rect(self.screen, color, slot, border_radius=1)
+            pygame.draw.rect(self.screen, border_color, slot, width=2, border_radius=1)
+            if active:
+                pygame.draw.rect(self.screen, (255, 255, 255, 55), slot.inflate(-6, -6), width=1)
             label = entry["label"]
             label = self._fit_text(self.font_tiny, label, icon - self._s(3))
             surf, sr = self.font_tiny.render(label, text_color)
-            self.screen.blit(surf, (ix + icon // 2 - sr.width // 2, y + h // 2 - sr.height // 2))
+            self.screen.blit(surf, (slot.centerx - sr.width // 2, slot.centery - sr.height // 2))
             ix += icon + gap
         return rect
 
