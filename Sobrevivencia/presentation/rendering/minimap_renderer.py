@@ -35,12 +35,8 @@ class MinimapRendererMixin:
                     
                     if altar.kind == "weapon_altar":
                         color = (239, 68, 68) # Red
-                    elif altar.kind == "stamps_altar":
-                        color = (6, 182, 212) # Cyan
                     elif altar.kind == "skill_altar":
                         color = (139, 92, 246) # Purple
-                    elif altar.kind == "black_market_altar":
-                        color = (34, 197, 94) # Green
                     else:
                         color = (245, 158, 11) # Gold
                         
@@ -51,19 +47,13 @@ class MinimapRendererMixin:
         # Draw Mini-boss / Boss threats
         if getattr(game, 'enemies', None):
             for enemy in game.enemies:
-                if enemy.kind in ("miniboss", "reaper", "harbinger"):
+                if enemy.kind == "miniboss":
                     diff = enemy.pos - player.pos
                     if diff.length() < radar_range:
                         ex = r + diff.x * scale
                         ey = r + diff.y * scale
                         pulse = 1.0 + 0.4 * math.sin(game.time_alive * 12.0)
-                        if enemy.kind == "reaper":
-                            pygame.draw.circle(minimap_surf, (220, 38, 38), (int(ex), int(ey)), int(self._s(5) * pulse))
-                            pygame.draw.circle(minimap_surf, (255, 245, 245), (int(ex), int(ey)), int(self._s(2.5) * pulse))
-                        elif enemy.kind == "harbinger":
-                            pygame.draw.circle(minimap_surf, (127, 29, 29), (int(ex), int(ey)), int(self._s(4) * pulse))
-                        else:
-                            pygame.draw.circle(minimap_surf, (249, 115, 22), (int(ex), int(ey)), int(self._s(3) * pulse))
+                        pygame.draw.circle(minimap_surf, (249, 115, 22), (int(ex), int(ey)), int(self._s(3) * pulse))
 
         # Draw stamp drops on radar (highlighted diamonds)
         if getattr(game, 'drops', None):

@@ -50,8 +50,7 @@ class ShopMenus:
             for offer in game.stat_shop_offers
         )
         inv = game.get_inventory(game.menu_player_index)
-        max_hp_sig = tuple(int(p.max_health) for p in game.players)
-        signature = (game.stat_shop_unlocked(), inv.points, max_hp_sig, game.menu_player_index, offers_signature)
+        signature = (game.stat_shop_unlocked(), inv.points, game.menu_player_index, offers_signature)
         
         if (not self.stat_shop_window or 
             not self.stat_shop_window.alive() or 
@@ -84,16 +83,38 @@ class ShopMenus:
             return
             
         inv = game.get_inventory(game.menu_player_index)
-        hp_cost = game._max_health_shop_cost(STAT_SHOP_ROLL_COST)
-        points_text = f"Vida maxima: {int(game.get_player(game.menu_player_index).max_health)} | Sacrificio: {hp_cost}"
+        points_label = f'Pontos J{game.menu_player_index + 1}' if game.multiplayer else 'Pontos disponiveis'
+        points_text = f"{points_label}: {inv.points}"
         c.label(
             pygame.Rect((650, 10), (200, 30)),
             points_text,
             container=self.stat_shop_window
         )
         
-        reroll_hp_cost = game._max_health_shop_cost(STAT_SHOP_REROLL_COST)
-        subtitle_text = f"Roletar e reroll sacrificam vida maxima permanente ({hp_cost}/{reroll_hp_cost})."
+        if not game.stat_shop_unlocked():
+            current_level = max(player.level for player in game.players)
+            needed = max(0, STAT_SHOP_UNLOCK_LEVEL - current_level)
+            c.label(
+                pygame.Rect((200, 100), (500, 40)),
+                f"Desbloqueia no nivel {STAT_SHOP_UNLOCK_LEVEL}",
+                container=self.stat_shop_window
+            )
+            c.label(
+                pygame.Rect((200, 150), (500, 30)),
+                f"Maior nivel atual {current_level}. Faltam {needed} niveis.",
+                container=self.stat_shop_window
+            )
+            self.stat_shop_back_button = c.button(
+                pygame.Rect((350, 480), (200, 40)),
+                'Voltar',
+                container=self.stat_shop_window,
+                intent='muted'
+            )
+            return
+            
+        subtitle_text = f"Roletar abre 3 ofertas por {STAT_SHOP_ROLL_COST} ponto. Jogar novamente uma oferta custa {STAT_SHOP_REROLL_COST} ponto."
+        if getattr(game, "stat_shop_cooldown", 0.0) > 0:
+            subtitle_text = f"Loja bloqueada por {game.stat_shop_cooldown:.0f}s apos compra recente."
         c.label(
             pygame.Rect((20, 10), (860, 30)),
             subtitle_text,
@@ -108,10 +129,12 @@ class ShopMenus:
             )
             btn = c.button(
                 pygame.Rect((320, 260), (260, 50)),
-                f"Roletar (-{hp_cost} Max HP)",
+                f"Roletar ({STAT_SHOP_ROLL_COST} pt)",
                 container=self.stat_shop_window,
-                intent='primary'
+                intent='primary' if getattr(game, "stat_shop_cooldown", 0.0) <= 0 else 'muted'
             )
+            if getattr(game, "stat_shop_cooldown", 0.0) > 0:
+                btn.disable()
             self.stat_shop_buttons['roll'] = btn
             
             self.stat_shop_back_button = c.button(
@@ -131,7 +154,21 @@ class ShopMenus:
         for index, offer in enumerate(game.stat_shop_offers):
             x = start_x + index * (card_w + gap)
             is_selected = (index == selected)
-
+            
+            panel = c.panel(
+                pygame.Rect((x, y), (card_w, card_h)),
+                container=self.stat_shop_window
+            )
+            if is_selected:
+                c.panel(
+                    pygame.Rect((0, 0), (card_w, card_h)),
+                    container=panel,
+                    object_id=ObjectID(class_id='@selected_panel', object_id='#item_button')
+                )
+                
+            x = start_x + index * (card_w + gap)
+            is_selected = (index == selected)
+            
             panel = c.panel(
                 pygame.Rect((x, y), (card_w, card_h)),
                 container=self.stat_shop_window
@@ -164,10 +201,11 @@ class ShopMenus:
                 line_y += 50
                 
             cost = offer['cost']
+            altar_purchase = getattr(game, "active_altar", None) is not None and game.active_altar.kind == "stat_altar"
+            on_cooldown = getattr(game, "stat_shop_cooldown", 0.0) > 0
             is_night = getattr(game, "light_level", 1.0) < 0.15
-            can_purchase = is_night or inv.points >= cost
             cost_text = "Custo: 20% Max HP (SANGUE)" if is_night else f"Custo: {cost} pts"
-            buy_text = "Pacto Sangrento" if is_night else f"Comprar ({cost})"
+            buy_text = "Pacto Sangrento" if is_night else (f"Comprar ({cost})" if altar_purchase else "Compra via Altar")
             
             c.label(
                 pygame.Rect((10, card_h - 110), (card_w - 20, 20)),
@@ -178,12 +216,13 @@ class ShopMenus:
                 pygame.Rect((10, card_h - 80), (card_w - 20, 30)),
                 buy_text,
                 container=panel,
-                intent='danger' if (can_purchase and is_night) else ('primary' if can_purchase else 'muted')
+                intent='danger' if (altar_purchase and is_night) else ('primary' if altar_purchase and not on_cooldown else 'muted')
             )
-            if not can_purchase:
+            if not altar_purchase or on_cooldown:
                 btn_buy.disable()
             self.stat_shop_buttons[index] = btn_buy
-            reroll_label = f"Reroll (-{reroll_hp_cost} Max HP)"
+            rerolls = getattr(game, "stat_shop_offer_rerolls", {}).get(index, 0)
+            reroll_label = "Sacrificar -5 HP" if rerolls >= 1 else f"Reroll ({STAT_SHOP_REROLL_COST})"
             btn_reroll = c.button(
                 pygame.Rect((10, card_h - 40), (card_w - 20, 30)),
                 reroll_label,
@@ -264,7 +303,6 @@ class ShopMenus:
         if not hasattr(self, '_last_upgrade_selected') or not hasattr(self, '_last_upgrade_player_index'):
             self._last_upgrade_selected = -1
             self._last_upgrade_player_index = -1
-            self._last_upgrade_choices = None
             
         if not hasattr(self, 'upgrade_window'):
             self.upgrade_window = None
@@ -272,8 +310,7 @@ class ShopMenus:
         if (not self.upgrade_window or 
             not self.upgrade_window.alive() or 
             self._last_upgrade_selected != selected or 
-            self._last_upgrade_player_index != game.level_up_player_index or
-            self._last_upgrade_choices != tuple(game.upgrade_choices)):
+            self._last_upgrade_player_index != game.level_up_player_index):
             
             if self.upgrade_window:
                 self.upgrade_window.kill()
@@ -281,7 +318,6 @@ class ShopMenus:
             self._create_upgrade_window(game, selected)
             self._last_upgrade_selected = selected
             self._last_upgrade_player_index = game.level_up_player_index
-            self._last_upgrade_choices = tuple(game.upgrade_choices)
             
         self.draw_gui_layer()
         if game.multiplayer:
@@ -308,9 +344,7 @@ class ShopMenus:
         
         is_major = game.upgrade_is_major
         title = "MELHORIA GRANDE" if is_major else "NOVO NIVEL"
-        subtitle = "Azul: skill exclusiva | Dourado: status melhorado | Verde: status normal"
-        if not is_major:
-            subtitle = "Verde: status normal | Dourado: status melhorado | Azul: skill exclusiva"
+        subtitle = "Escolha um poder permanente raro!" if is_major else "Escolha um upgrade permanente para continuar"
         if game.multiplayer:
             subtitle = f"Turno do Jogador {player_index + 1} - " + subtitle
             
@@ -331,34 +365,16 @@ class ShopMenus:
         y = 95
         for index, key in enumerate(game.upgrade_choices):
             data = UPGRADES.get(key)
-            category = "normal"
             if not data:
                 data = OMNI_UPGRADES.get(key)
-                category = "omni"
             if not data:
                 data = CHARACTERS[player.char_class]["passives"].get(key)
-                category = "exclusive"
             if not data: continue
             
             is_selected = (index == selected)
-            panel_class = {
-                "exclusive": "@exclusive_upgrade_panel",
-                "omni": "@omni_upgrade_panel",
-                "normal": "@normal_upgrade_panel",
-            }.get(category, "@upgrade_panel")
-            title_class = {
-                "exclusive": "@exclusive_upgrade_title",
-                "omni": "@omni_upgrade_title",
-                "normal": "@normal_upgrade_title",
-            }.get(category, "@upgrade_title")
-            badge_text = {
-                "exclusive": "SKILL EXCLUSIVA",
-                "omni": "STATUS MELHORADO",
-                "normal": "STATUS NORMAL",
-            }.get(category, "UPGRADE")
             
             panel_oid = ObjectID(
-                class_id="@selected_upgrade_panel" if is_selected else panel_class,
+                class_id="@selected_upgrade_panel" if is_selected else "@upgrade_panel",
                 object_id=f"#upgrade_{index}",
             )
             panel = UIPanel(
@@ -369,26 +385,15 @@ class ShopMenus:
             )
             
             indicator = "> " if is_selected else f"  [{index + 1}] "
-            title = data["title"]
-            if category == "exclusive":
-                current_level = player.passives.get(key, 0)
-                title = f"{title} (Atual: Nv {current_level})"
-            label_text = f"{indicator}{title}"
+            label_text = f"{indicator}{data['title']}"
             UILabel(
                 relative_rect=pygame.Rect((10, 8), (720, 30)),
                 text=label_text,
                 manager=self.gui_manager,
                 container=panel,
                 object_id=ObjectID(
-                    class_id="@selected_upgrade_title" if is_selected else title_class
+                    class_id="@selected_upgrade_title" if is_selected else "@upgrade_title"
                 )
-            )
-            UILabel(
-                relative_rect=pygame.Rect((555, 10), (170, 24)),
-                text=badge_text,
-                manager=self.gui_manager,
-                container=panel,
-                object_id=ObjectID(class_id=title_class)
             )
             UILabel(
                 relative_rect=pygame.Rect((10, 44), (720, 50)),
@@ -506,8 +511,7 @@ class ShopMenus:
             skill = data[key]
             level = player.passives[key]
             category = skill.get('category', 'Kit')
-            unlock_ready, _ = game.passive_unlock_status(key, player)
-            state = 'ATIVA' if level > 0 else ('BLOQ.' if unlock_ready else 'TRAVA')
+            state = 'ATIVA' if level > 0 else 'BLOQ.'
             btn_text = f"[{state}] NV {level}/10 - {skill['title'][:20]}"
             is_selected = (index == selected)
             
@@ -536,10 +540,6 @@ class ShopMenus:
             category = skill.get('category', 'Kit')
             cost = game.skill_upgrade_cost(selected_key)
             altar_upgrade = getattr(game, "active_altar", None) is not None and game.active_altar.kind == "skill_altar"
-            unlock_ready, unlock_text = game.passive_unlock_status(selected_key, player)
-            detail_text = f"<b>{skill['title']}</b><br><br>{skill['description']}"
-            if level <= 0 and not unlock_ready and unlock_text:
-                detail_text += f"<br><br><font color='#FCA5A5'>{unlock_text}</font>"
             
             c.label(
                 pygame.Rect((10, 10), (360, 20)),
@@ -548,16 +548,11 @@ class ShopMenus:
             )
             c.text_box(
                 pygame.Rect((10, 40), (360, 250)),
-                detail_text,
+                f"<b>{skill['title']}</b><br><br>{skill['description']}",
                 container=self.skills_detail_panel
             )
             
-            if level >= 10:
-                cost_text = "Nível Máximo"
-            elif level <= 0 and not unlock_ready:
-                cost_text = "Destravamento indisponivel"
-            else:
-                cost_text = f"Custo: {cost} pontos"
+            cost_text = f"Custo: {cost} pontos" if level < 10 else "Nível Máximo"
             c.label(
                 pygame.Rect((10, 300), (360, 30)),
                 cost_text,
@@ -570,7 +565,7 @@ class ShopMenus:
                 container=self.skills_detail_panel,
                 intent='primary' if altar_upgrade else 'muted'
             )
-            if not altar_upgrade or level >= 10 or inv.points < cost or (level <= 0 and not unlock_ready):
+            if not altar_upgrade or level >= 10 or inv.points < cost:
                 self.skills_upgrade_btn.disable()
         else:
             self.skills_upgrade_btn = None
@@ -921,3 +916,4 @@ class ShopMenus:
         if item.is_hybrid:
             return " + ".join(ITEM_DEFINITIONS[key]["short"] for key in item.hybrid_sources)
         return item_display_name(item)
+

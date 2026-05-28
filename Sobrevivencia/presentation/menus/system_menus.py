@@ -97,11 +97,6 @@ class SystemMenus:
             if data["shape"] == "circle_triangle":
                 pts = [(center[0] + 25, center[1]), (center[0] - 15, center[1] - 20), (center[0] - 15, center[1] + 20)]
                 pygame.draw.polygon(shape_surf, core, pts)
-            elif data["shape"] == "circle_square":
-                pygame.draw.rect(shape_surf, core, pygame.Rect(38, 38, 44, 44), border_radius=4)
-            elif data["shape"] == "circle_diamond":
-                pts = [(60, 24), (92, 60), (60, 96), (28, 60)]
-                pygame.draw.polygon(shape_surf, core, pts)
             else:
                 pygame.draw.circle(shape_surf, core, center, 15)
                 
@@ -152,62 +147,6 @@ class SystemMenus:
     def render_pause(self, game, options, selected, mouse_pos):
         self.render_game(game, mouse_pos, flip=False)
         return self._overlay_menu("PAUSADO", options, selected, mouse_pos)
-
-    def render_progression(self, game, mouse_pos):
-        self.render_game(game, mouse_pos, flip=False)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((5, 10, 18, 218))
-        self.screen.blit(overlay, (0, 0))
-
-        panel = pygame.Rect(120, 70, SCREEN_WIDTH - 240, SCREEN_HEIGHT - 120)
-        pygame.draw.rect(self.screen, hex_color(COLORS["panel"]), panel, border_radius=8)
-        pygame.draw.rect(self.screen, (250, 204, 21), panel, width=2, border_radius=8)
-
-        self._center_text("PROGRESSAO", self.font_title, panel.y + 22, COLORS["coin"])
-        self._center_text("Calice da Singularidade / Omni-Kernel", self.font, panel.y + 58, COLORS["text"])
-
-        x = panel.x + 34
-        y = panel.y + 104
-        max_w = panel.width - 68
-        info_lines = [
-            "O Calice da Singularidade e um artefato dividido em 7 fragmentos. Cada fragmento vem de um objetivo longo da run.",
-            "Ao completar os 7, o Omni-Kernel desperta: concede bonus permanentes massivos, ativa lasers orbitais automaticos e libera uma habilidade ativa de parada temporal sobre os inimigos.",
-            "Botao reservado para ativar o Omni-Kernel: acao Omni-Kernel. Padrao teclado: H. Padrao controle: botao 10.",
-        ]
-        for text in info_lines:
-            for line in self._wrap_text(text, 92):
-                self.font_tiny.render_to(self.screen, (x, y), line, hex_color(COLORS["muted"]))
-                y += 18
-            y += 4
-
-        y += 8
-        self.font_small.render_to(self.screen, (x, y), "Objetivos do Calice", hex_color(COLORS["coin"]))
-        y += 30
-
-        fragments = getattr(game, "chalice_fragments", {})
-        descriptions = {
-            "miniboss_3": "Derrote o 3o Miniboss da run.",
-            "world_hidden": "Encontre o fragmento escondido aleatoriamente no mapa principal.",
-            "pocket_hidden": "Entre na Dimensao de Bolso e colete o fragmento fixo antes do tempo acabar.",
-            "escort_4": "Conclua 4 missoes de escolta/resgate com sucesso.",
-            "quest_5": "Conclua 5 missoes rapidas de objetivo.",
-            "combat_mark": f"Alcance {CHALICE_KILL_TARGET} abates totais ou combo x{CHALICE_COMBO_TARGET}.",
-            "time_mark": f"Sobreviva por {int(CHALICE_TIME_TARGET // 60)} minutos.",
-        }
-        for entry in CHALICE_FRAGMENTS:
-            done = fragments.get(entry["key"], False)
-            marker = "[OK]" if done else "[  ]"
-            color = COLORS["xp"] if done else COLORS["muted_2"]
-            title = f"{marker} {entry['name']} ({entry['label']})"
-            self.font_tiny.render_to(self.screen, (x, y), title, hex_color(color))
-            self.font_tiny.render_to(self.screen, (x + 260, y), descriptions.get(entry["key"], ""), hex_color(COLORS["text"] if done else COLORS["muted"]))
-            y += 26
-
-        status = "OMNI-KERNEL ATIVO" if getattr(game, "omni_kernel_active", False) else "OMNI-KERNEL INATIVO"
-        status_color = COLORS["coin"] if getattr(game, "omni_kernel_active", False) else COLORS["muted_2"]
-        self._center_text(status, self.font, panel.bottom - 88, status_color)
-        buttons = [self._button(panel.centerx - 110, panel.bottom - 54, 220, 38, "Voltar", "progression_back", mouse_pos, COLORS["panel_2"])]
-        return buttons
 
     def render_game_over(self, game, mouse_pos, selected=0):
         self.render_game(game, mouse_pos, flip=False)
@@ -275,8 +214,7 @@ class SystemMenus:
                     "  Click Direito / K - Especial",
                     "  Q / R - Alternar Arma",
                     "  E / Tab - Inventario / Pausa",
-                    "  R - Habilidade Suprema / Combo",
-                    "  H - Omni-Kernel (quando desbloqueado)",
+                    "  L - Habilidade Suprema / Combo",
                     "",
                     "Controle (Xbox/PlayStation) (J1/J2):",
                     "  Analogico Esquerdo / D-Pad - Movimento",
@@ -285,7 +223,6 @@ class SystemMenus:
                     "  Gatilho Esquerdo (L2/LT) - Especial",
                     "  A / Cruz - Dash",
                     "  Y / Triangulo - Habilidade Suprema",
-                    "  Botao 10 - Omni-Kernel (quando desbloqueado)",
                     "  L1 / R1 - Alternar Arma",
                     "  Start / Options - Pausa / Inventario"
                 ]

@@ -456,10 +456,9 @@ class InputManager:
             f"{self._binding_combo(controls, 'dash')}: dash com recarga e invulnerabilidade curta",
             f"{self._binding_combo(controls, 'special')}: especial normal (toque)",
             f"{self._binding_combo(controls, 'combo_special')}: Suprema - segure com as duas barras cheias",
-            f"{self._binding_combo(controls, 'omni_active')}: ativa o Omni-Kernel quando desbloqueado",
             f"{self._binding_combo(controls, 'inventory')}: abre inventario de itens passivos",
             f"{self._binding_combo(controls, 'skills')}: abre Gerenciamento de Skills",
-            "Loja de Status: acessivel apenas pelo Altar de Status",
+            f"{self._binding_combo(controls, 'stat_shop')}: abre Loja de Status",
             f"{self._binding_combo(controls, 'settings')}: configuracoes da sessao",
             f"{self._binding_combo(controls, 'fullscreen')}: alternar tela cheia",
             "Controle Xbox: analogico esquerdo move, A confirma/dash, B volta, LB loja, RB skills, Start pausa.",
@@ -508,3 +507,4 @@ class InputManager:
         if abs(y) < JOYSTICK_AIM_DEADZONE:
             y = 0
         return Vector2(x, y)
+

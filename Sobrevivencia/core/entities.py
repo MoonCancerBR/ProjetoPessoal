@@ -215,10 +215,6 @@ class Enemy:
     phase: float = 0
     special_timer: float = 0
     summon_cooldown: float = 0.0
-    immune_to_knockback: bool = False
-    blood_mark_timer: float = 0.0
-    blood_mark_level: int = 0
-    blood_harvest_value: int = 0
     
     # Physics
     body: Any = field(default=None, init=False)
@@ -247,12 +243,6 @@ class Projectile:
     homing_level: int = 0
     stun_level: int = 0
     owner: int = 0
-    style: str = "bullet"
-    color: str = ""
-    trail_scale: float = 3.2
-    knockback: float = 0.0
-    mark_level: int = 0
-    mark_duration: float = 0.0
 
 
 @dataclass
@@ -273,13 +263,6 @@ class Slash:
     heavy_alloy_level: int = 0
     magnetic_pull_level: int = 0
     owner: int = 0
-    style: str = "swing"
-    color: str = ""
-    edge_color: str = ""
-    knockback: float = 330.0
-    pull_strength: float = 0.0
-    mark_level: int = 0
-    consume_mark: bool = False
 
 
 @dataclass
@@ -290,8 +273,6 @@ class Drop:
     radius: float = 10
     ttl: float = 18.0
     bob: float = 0
-    activation_timer: float = 0.0
-    activation_player_index: int = -1
 
 
 @dataclass
@@ -312,16 +293,6 @@ class Hazard:
     kind: str
     chunk: tuple
     pulse: float = 0
-
-
-@dataclass
-class StaticLight:
-    id: str
-    pos: Vector2
-    kind: str
-    radius: float
-    chunk: tuple
-    pulse: float = 0.0
 
 
 @dataclass
@@ -352,7 +323,7 @@ class PlayerConstruct:
 @dataclass
 class Altar:
     pos: Vector2
-    kind: str  # "weapon_altar", "skill_altar", "stat_altar", "stamps_altar", "black_market_altar"
+    kind: str  # "weapon_altar", "skill_altar", "stat_altar"
     radius: float = 24.0
     active: bool = True
     age: float = 0.0

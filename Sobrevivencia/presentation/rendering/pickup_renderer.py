@@ -47,7 +47,7 @@ class PickupRendererMixin:
                 pygame.draw.circle(self.screen, (22, 78, 99), (x, y), int(drop.radius * 0.7), 2)
                 pygame.draw.rect(self.screen, (239, 68, 68), (x - 4, y - 3, 3, 4))
                 pygame.draw.rect(self.screen, (59, 130, 246), (x + 2, y - 3, 3, 4))
-            elif drop.kind in ("portal", "exit_portal"):
+            elif drop.kind == "portal":
                 self._draw_soft_circle((x, y), drop.radius + 20 + pulse * 6, "#C084FC", alpha=75, rings=4)
                 pygame.draw.circle(self.screen, (168, 85, 247), (x, y), int(drop.radius * 1.3))
                 for r_idx in range(3):
@@ -55,11 +55,6 @@ class PickupRendererMixin:
                     swirl_x = x + math.cos(angle) * (drop.radius * 0.8)
                     swirl_y = y + math.sin(angle) * (drop.radius * 0.8)
                     pygame.draw.circle(self.screen, (243, 232, 255), (int(swirl_x), int(swirl_y)), 4)
-            elif drop.kind == "chalice":
-                self._draw_soft_circle((x, y), drop.radius + 16 + pulse * 6, "#FACC15", alpha=86, rings=4)
-                pygame.draw.circle(self.screen, (250, 204, 21), (x, y), int(drop.radius))
-                pygame.draw.circle(self.screen, (255, 247, 237), (x, y), int(drop.radius * 0.45))
-                pygame.draw.circle(self.screen, (113, 63, 18), (x, y), int(drop.radius), 2)
             elif drop.kind == "stamp":
                 try:
                     from Sobrevivencia.data.stamps import stamp_hud_color, Stamp
@@ -74,7 +69,3 @@ class PickupRendererMixin:
                 rotated_surf = pygame.transform.rotate(stamp_surface, 45)
                 rotated_rect = rotated_surf.get_rect(center=(x, y))
                 self.screen.blit(rotated_surf, rotated_rect.topleft)
-            if getattr(game, "light_level", 1.0) < 0.15:
-                outline = (250, 204, 21) if drop.kind in ("coin", "chalice") else (186, 230, 253)
-                pygame.draw.circle(self.screen, outline, (x, y), int(drop.radius + 7), 3)
-                pygame.draw.circle(self.screen, (255, 255, 255), (x, y), max(2, int(drop.radius * 0.28)))

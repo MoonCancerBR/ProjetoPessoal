@@ -71,7 +71,7 @@ class MenuManager:
         self.menus['start'] = menu
         return menu
 
-    def create_pause_menu(self, on_resume, on_inventory, on_skills, on_settings, on_quit, on_encyclopedia=None):
+    def create_pause_menu(self, on_resume, on_inventory, on_skills, on_stat_shop, on_settings, on_quit, on_encyclopedia=None):
         if pygame_menu is None:
             menu = {
                 "title": "PAUSADO",
@@ -81,6 +81,7 @@ class MenuManager:
                     ("CONTINUAR", on_resume),
                     ("INVENTARIO", on_inventory),
                     ("SKILLS", on_skills),
+                    ("LOJA DE STATUS", on_stat_shop),
                     ("ENCICLOPEDIA", on_encyclopedia or on_resume),
                     ("CONFIGURACOES", on_settings),
                     ("SAIR PARA MENU", on_quit),
@@ -97,6 +98,7 @@ class MenuManager:
         menu.add.button('CONTINUAR', on_resume, background_color=hex_to_rgb(COLORS["xp"]), font_color=(10, 20, 30))
         menu.add.button('INVENTARIO', on_inventory)
         menu.add.button('SKILLS', on_skills)
+        menu.add.button('LOJA DE STATUS', on_stat_shop)
         if on_encyclopedia:
             menu.add.button('ENCICLOPEDIA', on_encyclopedia)
         menu.add.button('CONFIGURACOES', on_settings)
@@ -150,9 +152,9 @@ class MenuManager:
         if pygame_menu is None:
             if not self.active_menu:
                 return
-            title_font = pygame.font.SysFont("Consolas", 48, bold=True)
-            subtitle_font = pygame.font.SysFont("Consolas", 20)
-            button_font = pygame.font.SysFont("Consolas", 30, bold=True)
+            title_font = pygame.font.SysFont("Segoe UI", 48, bold=True)
+            subtitle_font = pygame.font.SysFont("Segoe UI", 20)
+            button_font = pygame.font.SysFont("Segoe UI", 30, bold=True)
             title = title_font.render(self.active_menu["title"], True, hex_to_rgb(COLORS["upgrade"]))
             self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 140)))
             if self.active_menu["subtitle"]:

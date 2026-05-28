@@ -74,35 +74,6 @@ class MenuController:
         if act in ("buy_shop_item", "upgrade_inventory"):
             return getattr(self, "point_confirm_cost", 0) * quantity
 
-        if act == "sell_inventory":
-            inv = game.get_inventory(game.menu_player_index)
-            return inv.get_sell_value(action[1])
-
-        if act == "sell_inventory_marked":
-            inv = game.get_inventory(game.menu_player_index)
-            return sum(inv.get_sell_value(key) for key in action[1])
-
-        if act == "sell_stamp":
-            player = game.get_player(game.menu_player_index)
-            w1 = player.weapon_stamps.get("weapon_1", [])
-            w2 = player.weapon_stamps.get("weapon_2", [])
-            reserve_start = len(w1) + len(w2)
-            reserve_index = action[1] - reserve_start
-            if reserve_index < 0 or reserve_index >= len(player.stamp_reserve):
-                return getattr(self, "point_confirm_cost", 0)
-            try:
-                from ...data.stamps import stamp_sell_value
-            except:
-                from Sobrevivencia.data.stamps import stamp_sell_value
-            return stamp_sell_value(player.stamp_reserve[reserve_index])
-
-        if act == "sell_stamp_marked":
-            try:
-                from ...data.stamps import stamp_sell_value
-            except:
-                from Sobrevivencia.data.stamps import stamp_sell_value
-            return sum(stamp_sell_value(stamp) for _, stamp in self._selected_stamp_sale_targets(game, action[1]))
-
         if act == "upgrade_skill":
             player = game.get_player(game.menu_player_index)
             key = action[1]
@@ -125,10 +96,8 @@ class MenuController:
             return False
         return (
             (act == "upgrade_inventory" and altar.kind == "weapon_altar")
-            or (act in ("item_fuse", "sell_inventory", "buy_shop_item", "transform_inventory", "sell_stamp") and altar.kind == "black_market_altar")
-            or (act == "stamp_fuse" and altar.kind == "stamps_altar")
             or (act == "upgrade_skill" and altar.kind == "skill_altar")
-            or (act in ("purchase_stat_shop", "roll_stat_shop", "reroll_stat_shop") and altar.kind == "stat_altar")
+            or (act == "purchase_stat_shop" and altar.kind == "stat_altar")
         )
 
     def _blocked_static_upgrade(self, game, act):
@@ -136,22 +105,11 @@ class MenuController:
             return False
         names = {
             "upgrade_inventory": "Altar de Armas",
-            "item_fuse": "Mercado Negro",
-            "sell_inventory": "Mercado Negro",
-            "buy_shop_item": "Mercado Negro",
-            "transform_inventory": "Mercado Negro",
-            "sell_stamp": "Mercado Negro",
-            "stamp_fuse": "Altar de Selos",
             "upgrade_skill": "Altar de Habilidades",
             "purchase_stat_shop": "Altar de Status",
-            "roll_stat_shop": "Altar de Status",
-            "reroll_stat_shop": "Altar de Status",
         }
         game.message = f"Upgrade bloqueado no menu nativo. Encontre um {names.get(act, 'Altar')}."
         return True
-
-    def _stat_shop_altar_active(self, game):
-        return getattr(getattr(game, "active_altar", None), "kind", None) == "stat_altar"
 
     def _inventory_step_cost(self, item):
         return 7 if item.is_relic else (3 if item.is_hybrid else 1)
@@ -272,6 +230,7 @@ class MenuController:
                 for effect, value in zip(offer["effects"], original):
                     effect["value"] = value
                 if ok:
+                    game.stat_shop_cooldown = 30.0
                     game.message = "SUPER SUCESSO! Status aprimorado com bonus de 25%."
                     game.last_rng_result = {
                         "result": "super",
@@ -284,6 +243,8 @@ class MenuController:
                     }
                 return ok
             ok = game.purchase_stat_shop_offer(action[1])
+            if ok:
+                game.stat_shop_cooldown = 30.0
             if ok and result == "parcial":
                 game.message = "SUCESSO PARCIAL! Status aplicado sem bonus adicional."
                 game.last_rng_result = {
@@ -421,17 +382,7 @@ class MenuController:
         act = action[0]
         quantity = getattr(self, "point_confirm_quantity", 1)
 
-        if game.active_altar is not None and act == "purchase_stat_shop" and getattr(game.active_altar, "kind", None) == "stat_altar":
-            if self._blocked_static_upgrade(game, act):
-                self._clear_point_confirm_quantity()
-                return return_state
-            ok = game.purchase_stat_shop_offer(action[1])
-            if ok:
-                game.finish_altar_interaction(destroy=True)
-            self._clear_point_confirm_quantity()
-            return "playing" if ok else return_state
-
-        if game.active_altar is not None and act in ("upgrade_skill", "upgrade_inventory"):
+        if act in ("upgrade_skill", "upgrade_inventory", "purchase_stat_shop"):
             if self._blocked_static_upgrade(game, act):
                 self._clear_point_confirm_quantity()
                 return return_state
@@ -545,12 +496,17 @@ class MenuController:
             game.roll_stat_shop()
         elif act == "purchase_stat_shop":
             game.purchase_stat_shop_offer(action[1])
+            game.stat_shop_cooldown = 30.0
         elif act == "reroll_stat_shop":
             if game.reroll_stat_shop_offer(action[1]):
                 game.stat_shop_rerolls += 1
         elif act == "reroll_stat_shop_sacrifice":
-            if game.reroll_stat_shop_offer(action[1]):
+            player = game.get_player(game.menu_player_index)
+            if game.reroll_stat_shop_offer(action[1], free=True, allow_second=True):
+                player.max_health = max(10, player.max_health - 5)
+                player.health = min(player.health, player.max_health)
                 game.stat_shop_rerolls += 1
+                game.message = "Reroll com Sacrificio de -5 Max HP concluido."
         elif act == "upgrade_skill":
             done = 0
             for _ in range(quantity):
@@ -583,42 +539,10 @@ class MenuController:
             game.message = msg
         elif act == "sell_inventory":
             inv = game.get_inventory(game.menu_player_index)
-            value = inv.get_sell_value(action[1])
             success, msg = inv.sell_item(action[1])
-            self._sale_item_marks(game).discard(action[1])
-            game.message = msg if success else "Item nao encontrado."
-        elif act == "sell_inventory_marked":
-            inv = game.get_inventory(game.menu_player_index)
-            sold = 0
-            earned = 0
-            for key in action[1]:
-                if inv.is_active(key):
-                    continue
-                value = inv.get_sell_value(key)
-                success, _ = inv.sell_item(key)
-                if success:
-                    sold += 1
-                    earned += value
-            self._sale_item_marks(game).clear()
-            game.message = f"{sold} item(ns) vendido(s) por {earned} ponto(s)." if sold else "Nenhum item selecionado para venda."
+            game.message = msg
         elif act == "sell_stamp":
             game.sell_stamp(action[1])
-            self._sale_stamp_marks(game).discard(self._stamp_reserve_index(game, action[1]))
-        elif act == "sell_stamp_marked":
-            sold = 0
-            earned = 0
-            targets = self._selected_stamp_sale_targets(game, action[1])
-            for selected_index, stamp in sorted(targets, key=lambda target: target[0], reverse=True):
-                try:
-                    from ...data.stamps import stamp_sell_value
-                except:
-                    from Sobrevivencia.data.stamps import stamp_sell_value
-                value = stamp_sell_value(stamp)
-                if game.sell_stamp(selected_index):
-                    sold += 1
-                    earned += value
-            self._sale_stamp_marks(game).clear()
-            game.message = f"{sold} selo(s) vendido(s) por {earned} ponto(s)." if sold else "Nenhum selo selecionado para venda."
         elif act == "buy_relic":
             inv = game.get_inventory(game.menu_player_index)
             relic_source_key = action[1]
@@ -633,108 +557,6 @@ class MenuController:
                 game.message = "Pontos insuficientes para forjar reliquia."
         self._clear_point_confirm_quantity()
         return return_state
-
-    def _sale_item_marks(self, game):
-        inv = game.get_inventory(game.menu_player_index)
-        marks_by_player = getattr(game, "inventory_sale_marks", None)
-        if marks_by_player is None:
-            marks_by_player = {}
-            game.inventory_sale_marks = marks_by_player
-        marks = marks_by_player.setdefault(game.menu_player_index, set())
-        valid = {item.slot_key for item in inv.item_list() if not inv.is_active(item.slot_key)}
-        marks.intersection_update(valid)
-        return marks
-
-    def _sale_stamp_marks(self, game):
-        player = game.get_player(game.menu_player_index)
-        marks_by_player = getattr(game, "stamp_sale_marks", None)
-        if marks_by_player is None:
-            marks_by_player = {}
-            game.stamp_sale_marks = marks_by_player
-        marks = marks_by_player.setdefault(game.menu_player_index, set())
-        marks.intersection_update(range(len(player.stamp_reserve)))
-        return marks
-
-    def _stamp_reserve_index(self, game, selected):
-        player = game.get_player(game.menu_player_index)
-        reserve_start = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", []))
-        return selected - reserve_start
-
-    def _selected_inventory_sale_keys(self, game):
-        inv = game.get_inventory(game.menu_player_index)
-        marks = self._sale_item_marks(game)
-        return tuple(item.slot_key for item in inv.item_list() if item.slot_key in marks and not inv.is_active(item.slot_key))
-
-    def _selected_stamp_sale_targets(self, game, marks=None):
-        player = game.get_player(game.menu_player_index)
-        reserve_start = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", []))
-        selected_marks = self._sale_stamp_marks(game) if marks is None else set(marks)
-        targets = []
-        for reserve_index, stamp in enumerate(player.stamp_reserve):
-            if reserve_index in selected_marks:
-                targets.append((reserve_start + reserve_index, stamp))
-        return targets
-
-    def _toggle_inventory_sale_mark(self, game, slot_key):
-        inv = game.get_inventory(game.menu_player_index)
-        if inv.is_active(slot_key):
-            game.message = "Desequipe o item antes de marca-lo para venda."
-            return False
-        marks = self._sale_item_marks(game)
-        if slot_key in marks:
-            marks.remove(slot_key)
-            game.message = "Item removido da selecao de venda."
-            return False
-        marks.add(slot_key)
-        game.message = f"{len(marks)} item(ns) marcado(s) para venda."
-        return True
-
-    def _toggle_stamp_sale_mark(self, game, selected):
-        player = game.get_player(game.menu_player_index)
-        reserve_index = self._stamp_reserve_index(game, selected)
-        if reserve_index < 0 or reserve_index >= len(player.stamp_reserve):
-            game.message = "Desequipe o selo antes de marca-lo para venda."
-            return False
-        marks = self._sale_stamp_marks(game)
-        if reserve_index in marks:
-            marks.remove(reserve_index)
-            game.message = "Selo removido da selecao de venda."
-            return False
-        marks.add(reserve_index)
-        game.message = f"{len(marks)} selo(s) marcado(s) para venda."
-        return True
-
-    def _confirm_inventory_sale_marks(self, game):
-        keys = self._selected_inventory_sale_keys(game)
-        if not keys:
-            game.message = "Marque pelo menos um item para vender."
-            return None
-        inv = game.get_inventory(game.menu_player_index)
-        total = sum(inv.get_sell_value(key) for key in keys)
-        self.point_confirm_action = ("sell_inventory_marked", keys)
-        self.point_confirm_cost = total
-        self.point_confirm_msg = f"Deseja vender {len(keys)} item(ns) selecionado(s) por {total} ponto(s)?"
-        self.point_confirm_return = "inventory"
-        self.point_confirm_selected = 1
-        return "point_confirm"
-
-    def _confirm_stamp_sale_marks(self, game):
-        marks = tuple(sorted(self._sale_stamp_marks(game)))
-        targets = self._selected_stamp_sale_targets(game, marks)
-        if not targets:
-            game.message = "Marque pelo menos um selo para vender."
-            return None
-        try:
-            from ...data.stamps import stamp_sell_value
-        except:
-            from Sobrevivencia.data.stamps import stamp_sell_value
-        total = sum(stamp_sell_value(stamp) for _, stamp in targets)
-        self.point_confirm_action = ("sell_stamp_marked", marks)
-        self.point_confirm_cost = total
-        self.point_confirm_msg = f"Deseja vender {len(targets)} selo(s) selecionado(s) por {total} ponto(s)?"
-        self.point_confirm_return = "inventory"
-        self.point_confirm_selected = 1
-        return "point_confirm"
 
     def _current_character_index(self, game, player_index=0):
         keys = list(CHARACTERS.keys())
@@ -753,15 +575,10 @@ class MenuController:
             state = "settings"
         elif action == "constructions":
             state = "constructions"
-        elif action == "progression":
-            state = "progression"
         elif action == "skills":
             state = "skills"
         elif action == "stat_shop":
-            if self._stat_shop_altar_active(game):
-                state = "stat_shop"
-            else:
-                game.message = "Loja de Status disponivel apenas no Altar de Status."
+            state = "stat_shop"
         elif action == "change_character":
             state = "character_select"
         elif action == "inventory":
@@ -791,8 +608,6 @@ class MenuController:
         active_items = [item for item in raw_items if inv.is_active(item.slot_key)]
         reserve_items = [item for item in raw_items if not inv.is_active(item.slot_key)]
         items = active_items + reserve_items
-        altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
-        can_black_market = altar_kind == "black_market_altar"
         if action == "resume":
             if game.active_altar is not None:
                 game.finish_altar_interaction(destroy=True)
@@ -800,13 +615,7 @@ class MenuController:
 
         # -- Ações de Selos (Stamps) --
         if action.startswith("stamp_select:"):
-            idx = int(action.split(":", 1)[1])
-            if can_black_market:
-                player = game.get_player(game.menu_player_index)
-                if idx < len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])):
-                    return state, idx
-                self._toggle_stamp_sale_mark(game, idx)
-            return state, idx
+            return state, int(action.split(":", 1)[1])
         if action == "stamp_equip_w1":
             game.equip_stamp("weapon_1", selected)
             return state, selected
@@ -817,31 +626,30 @@ class MenuController:
             game.unequip_stamp(selected)
             return state, 0
         elif action == "stamp_fuse":
-            if self._blocked_static_upgrade(game, "stamp_fuse"):
-                return state, selected
             game.setup_stamp_fusion(selected)
             return "stamp_fusion_confirm", selected
         elif action == "stamp_sell":
-            if self._blocked_static_upgrade(game, "sell_stamp"):
-                return state, selected
-            self._toggle_stamp_sale_mark(game, selected)
-        elif action == "stamp_sell_confirm":
-            if self._blocked_static_upgrade(game, "sell_stamp"):
-                return state, selected
-            next_state = self._confirm_stamp_sale_marks(game)
-            if next_state:
-                return next_state, selected
+            player = game.get_player(game.menu_player_index)
+            w1 = player.weapon_stamps.get("weapon_1", [])
+            w2 = player.weapon_stamps.get("weapon_2", [])
+            res_idx = selected - len(w1) - len(w2)
+            if res_idx >= 0 and res_idx < len(player.stamp_reserve):
+                stamp = player.stamp_reserve[res_idx]
+                try:
+                    from ...data.stamps import stamp_sell_value
+                except:
+                    from Sobrevivencia.data.stamps import stamp_sell_value
+                val = stamp_sell_value(stamp)
+                self.point_confirm_action = ("sell_stamp", selected)
+                self.point_confirm_cost = 0
+                self.point_confirm_msg = f"Deseja vender este selo por {val} pts?"
+                self.point_confirm_return = "inventory"
+                self.point_confirm_selected = 1
+                return "point_confirm", selected
 
         # -- Ações de Itens Regulares --
         if action.startswith("item_select:"):
-            idx = int(action.split(":", 1)[1])
-            if can_black_market:
-                if idx < len(active_items):
-                    return state, idx
-                item = items[idx] if idx < len(items) else None
-                if item is not None and not inv.is_active(item.slot_key):
-                    self._toggle_inventory_sale_mark(game, item.slot_key)
-            return state, idx
+            return state, int(action.split(":", 1)[1])
             
         if not items:
             return state, selected
@@ -865,25 +673,21 @@ class MenuController:
             else:
                 game.message = f"Pontos insuficientes (custa {cost})."
         elif action == "item_fuse":
-            if self._blocked_static_upgrade(game, "item_fuse"):
-                return state, selected
             game.mark_or_fuse_item(slot_key)
             if game.has_pending_fusion():
                 return "fusion_confirm", selected
             selected = min(selected, max(0, len(inv.item_list()) - 1))
         elif action == "item_sell":
-            if self._blocked_static_upgrade(game, "sell_inventory"):
-                return state, selected
             if not inv.is_active(items[selected].slot_key):
-                self._toggle_inventory_sale_mark(game, items[selected].slot_key)
+                value = inv.get_sell_value(items[selected].slot_key)
+                self.point_confirm_action = ("sell_inventory", items[selected].slot_key)
+                self.point_confirm_cost = 0  # No cost, we gain points
+                self.point_confirm_msg = f"Deseja vender este item por {value} ponto(s)?"
+                self.point_confirm_return = "inventory"
+                self.point_confirm_selected = 1
+                return "point_confirm", selected
             else:
                 game.message = "Desequipe o item antes de vende-lo."
-        elif action == "item_sell_confirm":
-            if self._blocked_static_upgrade(game, "sell_inventory"):
-                return state, selected
-            next_state = self._confirm_inventory_sale_marks(game)
-            if next_state:
-                return next_state, selected
         return state, selected
 
     def _handle_stat_shop_action(self, action, game, return_state):
@@ -893,18 +697,25 @@ class MenuController:
                 game.finish_altar_interaction(destroy=True)
             return return_state
         if action == "stat_shop_roll":
-            hp_cost = game._max_health_shop_cost(STAT_SHOP_ROLL_COST)
-            self.point_confirm_action = ("roll_stat_shop",)
-            self.point_confirm_cost = hp_cost
-            self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para abrir o gacha?"
-            self.point_confirm_return = "stat_shop"
-            self.point_confirm_selected = 1
-            return "point_confirm"
+            if getattr(game, "stat_shop_cooldown", 0.0) > 0:
+                game.message = f"Loja de Status bloqueada por {game.stat_shop_cooldown:.0f}s."
+                return "stat_shop"
+            if inv.points >= STAT_SHOP_ROLL_COST:
+                self.point_confirm_action = ("roll_stat_shop",)
+                self.point_confirm_cost = STAT_SHOP_ROLL_COST
+                self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_ROLL_COST} ponto(s) para abrir a loja?"
+                self.point_confirm_return = "stat_shop"
+                self.point_confirm_selected = 1
+                return "point_confirm"
+            else:
+                game.message = f"Pontos insuficientes (custa {STAT_SHOP_ROLL_COST})."
+                return "stat_shop"
         if action.startswith("stat_shop_buy:"):
+            if self._blocked_static_upgrade(game, "purchase_stat_shop"):
+                return "stat_shop"
             idx = int(action.split(":", 1)[1])
             cost = game.stat_shop_offers[idx]["cost"]
-            is_night = getattr(game, "light_level", 1.0) < 0.15
-            if is_night or inv.points >= cost:
+            if inv.points >= cost:
                 self.point_confirm_action = ("purchase_stat_shop", idx)
                 self.point_confirm_cost = cost
                 self.point_confirm_msg = f"Deseja gastar {cost} ponto(s) para comprar esta melhoria?"
@@ -916,13 +727,24 @@ class MenuController:
                 return "stat_shop"
         if action.startswith("stat_shop_reroll:"):
             idx = int(action.split(":", 1)[1])
-            hp_cost = game._max_health_shop_cost(STAT_SHOP_REROLL_COST)
-            self.point_confirm_action = ("reroll_stat_shop", idx)
-            self.point_confirm_cost = hp_cost
-            self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para trocar esta oferta?"
-            self.point_confirm_return = "stat_shop"
-            self.point_confirm_selected = 1
-            return "point_confirm"
+            used = getattr(game, "stat_shop_offer_rerolls", {}).get(idx, 0)
+            if used >= 1:
+                self.point_confirm_action = ("reroll_stat_shop_sacrifice", idx)
+                self.point_confirm_cost = 0
+                self.point_confirm_msg = "AVISO: sacrificar permanentemente -5 Max HP para novo reroll desta oferta?"
+                self.point_confirm_return = "stat_shop"
+                self.point_confirm_selected = 1
+                return "point_confirm"
+            if inv.points >= STAT_SHOP_REROLL_COST:
+                self.point_confirm_action = ("reroll_stat_shop", idx)
+                self.point_confirm_cost = STAT_SHOP_REROLL_COST
+                self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_REROLL_COST} ponto(s) para trocar esta oferta?"
+                self.point_confirm_return = "stat_shop"
+                self.point_confirm_selected = 1
+                return "point_confirm"
+            else:
+                game.message = f"Pontos insuficientes (custa {STAT_SHOP_REROLL_COST})."
+                return "stat_shop"
         return "stat_shop"
 
     def _handle_construction_action(self, action, selected, game=None):
@@ -979,8 +801,6 @@ class MenuController:
     def _handle_fusion_confirm_action(self, action, game, selected):
         inv = game.get_inventory(game.menu_player_index)
         if action == "fusion_confirm_yes":
-            if self._blocked_static_upgrade(game, "item_fuse"):
-                return "inventory", selected
             game.confirm_pending_fusion()
         elif action == "fusion_confirm_no":
             game.cancel_pending_fusion()
@@ -989,8 +809,6 @@ class MenuController:
 
     def _handle_stamp_fusion_confirm_action(self, action, game, selected):
         if action == "stamp_fusion_confirm_yes":
-            if self._blocked_static_upgrade(game, "stamp_fuse"):
-                return "inventory", selected
             can_conf, msg = game.can_confirm_stamp_fusion()
             if can_conf:
                 game.confirm_stamp_fusion()

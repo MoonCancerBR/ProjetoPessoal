@@ -6,12 +6,12 @@ from pygame.math import Vector2
 if __package__:
     from ..config.runtime import njit_or_python as njit, optional_import
     from ..data.constants import CHUNK_SIZE, ICE_SPEED_MULTIPLIER, TERRAIN_TYPES, VIEW_PADDING, WORLD_TILE_SIZE
-    from .entities import Destructible, Hazard, RectBody, StaticLight
+    from .entities import Destructible, Hazard, RectBody
     from .physics import SimplePhysicsBackend
 else:
     from Sobrevivencia.config.runtime import njit_or_python as njit, optional_import
     from Sobrevivencia.data.constants import CHUNK_SIZE, ICE_SPEED_MULTIPLIER, TERRAIN_TYPES, VIEW_PADDING, WORLD_TILE_SIZE
-    from Sobrevivencia.core.entities import Destructible, Hazard, RectBody, StaticLight
+    from Sobrevivencia.core.entities import Destructible, Hazard, RectBody
     from Sobrevivencia.core.physics import SimplePhysicsBackend
 
 pytmx = optional_import("pytmx")
@@ -98,7 +98,6 @@ class World:
         obstacles = []
         destructibles = []
         hazards = []
-        static_lights = []
 
         obstacle_count = 3 + rng.randint(0, 4)
         for index in range(obstacle_count):
@@ -180,28 +179,7 @@ class World:
                 continue
             hazards.append(Hazard(id=f"{cx}:{cy}:h{index}", rect=rect, kind=kind, chunk=(cx, cy)))
 
-        if rng.random() < 0.62:
-            for index in range(1 + (1 if rng.random() < 0.22 else 0)):
-                radius = rng.randint(125, 190)
-                pos = Vector2(
-                    base_x + rng.randint(70, CHUNK_SIZE - 70),
-                    base_y + rng.randint(70, CHUNK_SIZE - 70),
-                )
-                if pos.length() < 360:
-                    continue
-                if any(circle_rect_overlap(pos.x, pos.y, 30, obstacle) for obstacle in obstacles):
-                    continue
-                static_lights.append(
-                    StaticLight(
-                        id=f"{cx}:{cy}:l{index}",
-                        pos=pos,
-                        kind="crystal" if rng.random() < 0.5 else "lamp",
-                        radius=radius,
-                        chunk=(cx, cy),
-                    )
-                )
-
-        return {"obstacles": obstacles, "destructibles": destructibles, "hazards": hazards, "static_lights": static_lights}
+        return {"obstacles": obstacles, "destructibles": destructibles, "hazards": hazards}
 
     def terrain_at(self, x, y):
         tile_x = math.floor(x / WORLD_TILE_SIZE)
@@ -281,16 +259,6 @@ class World:
                 rect = hazard.rect
                 if not (rect.right < left or rect.left > right or rect.bottom < top or rect.top > bottom):
                     yield hazard
-
-    def iter_visible_static_lights(self, camera_x, camera_y, width, height):
-        left = camera_x - VIEW_PADDING
-        top = camera_y - VIEW_PADDING
-        right = camera_x + width + VIEW_PADDING
-        bottom = camera_y + height + VIEW_PADDING
-        for chunk in self._chunks_in_rect(left, top, right, bottom):
-            for light in chunk.get("static_lights", []):
-                if not (light.pos.x + light.radius < left or light.pos.x - light.radius > right or light.pos.y + light.radius < top or light.pos.y - light.radius > bottom):
-                    yield light
 
     def nearby_solid_rects(self, x, y, radius, include_destructibles=True):
         left = x - radius - 96
@@ -373,3 +341,4 @@ class World:
     def remove_hazard(self, hazard):
         chunk = self.ensure_chunk(*hazard.chunk)
         chunk["hazards"] = [entry for entry in chunk["hazards"] if entry.id != hazard.id]
+
