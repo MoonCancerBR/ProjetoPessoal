@@ -4,17 +4,19 @@ from pygame.math import Vector2
 if __package__:
     from ...data.constants import *
     from ...data.items import BASE_ITEM_KEYS, ITEM_DEFINITIONS, InventoryItem, MAX_ACTIVE_ITEMS, MAX_ITEM_LEVEL, item_display_name, item_short_description, RELIC_DEFINITIONS
+    from .. import arcade_theme
     from ..ui_utils import hex_color
 else:
     from Sobrevivencia.data.constants import *
     from Sobrevivencia.data.items import BASE_ITEM_KEYS, ITEM_DEFINITIONS, InventoryItem, MAX_ACTIVE_ITEMS, MAX_ITEM_LEVEL, item_display_name, item_short_description, RELIC_DEFINITIONS
+    from Sobrevivencia.presentation import arcade_theme
     from Sobrevivencia.presentation.ui_utils import hex_color
 
 
 BASE_SCREEN_W = 1100
 BASE_SCREEN_H = 720
 
-HUD_TOP_H = 126
+HUD_TOP_H = 148
 HUD_MARGIN = 10
 
 PANEL_W_SINGLE_MIN = 650
@@ -66,6 +68,8 @@ class HudMenu:
         return trimmed.rstrip() + suffix
 
     def _render_fit(self, font, text, pos, color, max_width):
+        if isinstance(color, str):
+            color = hex_color(color)
         font.render_to(self.screen, pos, self._fit_text(font, text, max_width), color)
 
     def _wrap_lines(self, font, text, max_width, max_lines):
@@ -102,13 +106,20 @@ class HudMenu:
 
     def _draw_panel_back(self, rect, alpha=220, border=(51, 65, 85), radius=6):
         overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        pygame.draw.rect(overlay, (16, 25, 40, alpha), overlay.get_rect(), border_radius=self._s(radius))
+        overlay.fill((5, 5, 10, min(245, alpha)))
         self.screen.blit(overlay, rect.topleft)
-        pygame.draw.rect(self.screen, border, rect, width=1, border_radius=self._s(radius))
+        pygame.draw.rect(self.screen, border, rect, width=2)
+        inner = rect.inflate(-self._s(7), -self._s(7))
+        if inner.width > 0 and inner.height > 0:
+            pygame.draw.rect(self.screen, (38, 56, 94), inner, width=1)
+        pygame.draw.rect(self.screen, (255, 255, 255, 34), (rect.x + self._s(8), rect.y + self._s(6), min(self._s(36), rect.width - self._s(16)), self._s(2)))
 
     def _draw_hud_backdrop(self, height):
-        pygame.draw.rect(self.screen, hex_color(COLORS["panel"]), (0, 0, SCREEN_WIDTH, height))
-        pygame.draw.line(self.screen, (30, 41, 59), (0, height), (SCREEN_WIDTH, height), self._s(2))
+        pygame.draw.rect(self.screen, hex_color("#05050AF2"), (0, 0, SCREEN_WIDTH, height))
+        for y in range(0, height, self._s(4)):
+            pygame.draw.line(self.screen, (15, 25, 44), (0, y), (SCREEN_WIDTH, y), 1)
+        pygame.draw.line(self.screen, hex_color(COLORS["special"]), (0, height - self._s(2)), (SCREEN_WIDTH, height - self._s(2)), self._s(2))
+        pygame.draw.line(self.screen, hex_color(COLORS["coin"]), (0, height), (SCREEN_WIDTH, height), 1)
 
     def _draw_hud(self, game):
         if game.multiplayer and len(game.players) > 1:
@@ -151,8 +162,11 @@ class HudMenu:
         )
         self._draw_message(game.message, side_x, self._s(49), side_w)
         self._draw_quest_panel(game, x=side_x, y=self._s(72), w=side_w, compact=True)
-        stats_rect = self._draw_stats_panel(game, y=hud_h + self._s(8), compact=True)
-        self._draw_buff_list(player, SCREEN_WIDTH - margin, stats_rect.bottom + self._s(8), align_right=True)
+        self._draw_status_strip(game, player, inv, side_x, self._s(120), side_w)
+        self._draw_chalice_tracker(game, margin + self._s(4), hud_h + self._s(38))
+        self._draw_combo_counter(game)
+        self._draw_buff_list(player, SCREEN_WIDTH - margin, hud_h + self._s(8), align_right=True)
+        self._draw_synergy_tags(inv, margin, hud_h + self._s(8), align_right=False)
         self._draw_escort_hud(game)
         self._draw_altar_compass(game)
         self._draw_game_clock(game)
@@ -193,10 +207,13 @@ class HudMenu:
             self.screen.blit(surf, (center_x + center_w // 2 - rect.width // 2, self._s(60)))
 
         self._draw_quest_panel(game, x=center_x, y=self._s(76), w=center_w, compact=True)
-        left_stats, right_stats = self._draw_coop_stats_panels(game)
-        self._draw_buff_list(game.player, margin, left_stats.bottom + self._s(8), align_right=False)
+        self._draw_chalice_tracker(game, center_x, hud_h + self._s(38))
+        self._draw_combo_counter(game, center_x, self._s(120), center_w)
+        self._draw_buff_list(game.player, margin, hud_h + self._s(8), align_right=False)
+        self._draw_synergy_tags(game.get_inventory(0), margin, hud_h + self._s(8) + self._s(90), align_right=False)
         if getattr(game, "player2", None):
-            self._draw_buff_list(game.player2, SCREEN_WIDTH - margin, right_stats.bottom + self._s(8), align_right=True)
+            self._draw_buff_list(game.player2, SCREEN_WIDTH - margin, hud_h + self._s(8), align_right=True)
+            self._draw_synergy_tags(game.get_inventory(1), SCREEN_WIDTH - margin, hud_h + self._s(8) + self._s(90), align_right=True)
         self._draw_altar_compass(game)
         self._draw_game_clock(game)
         self._draw_heat_gauge(game)
@@ -226,6 +243,40 @@ class HudMenu:
         surf, rect = self.font_tiny.render(msg, hex_color(COLORS["muted"]))
         draw_x = x + w // 2 - rect.width // 2 if centered else x
         self.screen.blit(surf, (draw_x, y))
+
+    def _draw_status_strip(self, game, player, inv, x, y, w):
+        rect = pygame.Rect(x, y, w, self._s(22))
+        self._draw_panel_back(rect, alpha=138, border=(39, 52, 73), radius=5)
+        values = [
+            ("Tiro", f"{game.projectile_damage_for(player, inv):.0f}"),
+            ("Esp", f"{game.sword_damage_for(player, inv):.0f}"),
+            ("Cad", f"{game.effective_attack_rate_multiplier_for(player, inv) / PROJECTILE_COOLDOWN:.1f}/s"),
+        ]
+        gap = self._s(8)
+        cell_w = max(self._s(52), (w - self._s(12) - gap * (len(values) - 1)) // len(values))
+        cx = x + self._s(6)
+        for label, value in values:
+            text = self._fit_text(self.font_tiny, f"{label} {value}", cell_w)
+            self.font_tiny.render_to(self.screen, (cx, y + self._s(5)), text, hex_color(COLORS["text"]))
+            cx += cell_w + gap
+
+    def _draw_combo_counter(self, game, x=None, y=None, w=None):
+        if getattr(game, "combo_count", 0) <= 0 or getattr(game, "combo_timer", 0.0) <= 0:
+            return None
+        w = self._s(180) if w is None else min(int(w), self._s(240))
+        h = self._s(38)
+        x = SCREEN_WIDTH // 2 - w // 2 if x is None else int(x + max(0, (int(w) - w) // 2))
+        y = self._top_h() + self._s(104) if y is None else int(y)
+        rect = pygame.Rect(x, y, w, h)
+        pulse = 90 + int(50 * min(1.0, game.combo_timer / 2.2))
+        self._draw_panel_back(rect, alpha=178, border=(250, 204, 21), radius=6)
+        title = f"COMBO x{game.combo_count}"
+        rate = f"{game.combo_kps:.1f} ab/s"
+        self.font_small.render_to(self.screen, (x + self._s(10), y + self._s(5)), self._fit_text(self.font_small, title, w - self._s(20)), (250, 204, 21))
+        self.font_tiny.render_to(self.screen, (x + self._s(10), y + self._s(23)), rate, (253, 230, 138))
+        bar_w = int((w - self._s(20)) * min(1.0, game.combo_timer / 2.2))
+        pygame.draw.rect(self.screen, (250, 204, 21, pulse), (x + self._s(10), y + h - self._s(5), bar_w, self._s(3)), border_radius=2)
+        return rect
 
     def _draw_player_panel(self, game, player, inv, x, y, compact=False, flip=False, expanded=False, width=None):
         if expanded:
@@ -471,7 +522,7 @@ class HudMenu:
     def _draw_cooldown_row(self, game, player, x, y, w):
         gap = self._s(3)
         h = self._s(22)
-        cell_w = max(self._s(38), (w - gap * 3) // 4)
+        cell_w = max(self._s(34), (w - gap * 4) // 5)
         w_name = CHARACTERS[player.char_class][player.mode]
         mode_col = COLORS["sword"] if player.mode == "weapon_2" else COLORS["projectile"]
         self._pill(x, y, cell_w, h, w_name[:6].upper(), mode_col)
@@ -491,6 +542,10 @@ class HudMenu:
         dash_fill = 1.0 - min(1.0, player.dash_cooldown / DASH_COOLDOWN)
         dash_lbl = "DASH" if dash_fill >= 1.0 else f"{player.dash_cooldown:.1f}s"
         self._mini_cooldown(x + (cell_w + gap) * 3, y, cell_w, h, dash_lbl, dash_fill)
+
+        omni_fill = game.omni_active_charge_ratio()
+        omni_lbl = f"OMNI {game.omni_active_status()}"
+        self._mini_cooldown(x + (cell_w + gap) * 4, y, cell_w, h, omni_lbl, omni_fill)
 
         try:
             if __package__:
@@ -635,11 +690,13 @@ class HudMenu:
     def _bar(self, x, y, w, h, fill, color, bg, label):
         fill = max(0, min(1, fill))
         rect = pygame.Rect(x, y, w, h)
-        pygame.draw.rect(self.screen, hex_color(bg), rect, border_radius=self._s(5))
+        pygame.draw.rect(self.screen, hex_color(bg), rect)
         if fill > 0:
             fill_rect = pygame.Rect(x, y, max(1, int(w * fill)), h)
-            pygame.draw.rect(self.screen, hex_color(color), fill_rect, border_radius=self._s(5))
-        pygame.draw.rect(self.screen, (15, 23, 42), rect, width=1, border_radius=self._s(5))
+            pygame.draw.rect(self.screen, hex_color(color), fill_rect)
+            for sx in range(fill_rect.x + self._s(6), fill_rect.right, self._s(12)):
+                pygame.draw.line(self.screen, (255, 255, 255, 36), (sx, fill_rect.y + 1), (sx, fill_rect.bottom - 2), 1)
+        pygame.draw.rect(self.screen, arcade_theme.rgb("#26385E"), rect, width=1)
 
         label = self._fit_text(self.font_tiny, label, w - self._s(10))
         text_y = y + h // 2 - self.font_tiny.get_rect(label).height // 2 - self._s(1)
@@ -648,8 +705,8 @@ class HudMenu:
 
     def _pill(self, x, y, w, h, text, color):
         rect = pygame.Rect(x, y, w, h)
-        pygame.draw.rect(self.screen, hex_color(color), rect, border_radius=self._s(6))
-        pygame.draw.rect(self.screen, (255, 255, 255, 50), rect, width=1, border_radius=self._s(6))
+        pygame.draw.rect(self.screen, hex_color(color), rect)
+        pygame.draw.rect(self.screen, (255, 255, 255, 70), rect, width=1)
         text = self._fit_text(self.font_tiny, text, w - self._s(8))
         surf, s_rect = self.font_tiny.render(text, (9, 14, 24))
         self.screen.blit(surf, (x + w // 2 - s_rect.width // 2, y + h // 2 - s_rect.height // 2))
@@ -678,6 +735,27 @@ class HudMenu:
             width = max(self._s(72), self.font_tiny.get_rect(text).width + self._s(16))
             bx = start_x - width if align_right else start_x
             self._pill(bx, y, width, self._s(20), text, color)
+            y += self._s(26)
+
+    def _draw_synergy_tags(self, inv, start_x, start_y, align_right=False):
+        synergies = inv.get_active_synergies()
+        if not synergies:
+            return
+            
+        labels = {
+            "elemental": "♨ Elemental",
+            "defensiva": "⛨ Defensiva",
+            "utilitaria": "⧖ Utilitaria",
+            "cinetica": "⚡ Cinetica",
+            "ofensiva": "⚔ Ofensiva"
+        }
+        
+        y = start_y
+        for syn in synergies:
+            text = labels.get(syn, syn.title())
+            width = max(self._s(80), self.font_tiny.get_rect(text).width + self._s(16))
+            bx = start_x - width if align_right else start_x
+            self._pill(bx, y, width, self._s(22), text, COLORS["special"])
             y += self._s(26)
 
     def _draw_coop_stats_panels(self, game):
@@ -728,7 +806,7 @@ class HudMenu:
             ("Dano espada", f"{game.sword_damage_for(player, inv):.0f}"),
             ("Alcance espada", f"{game.sword_radius_for(player, inv):.0f}"),
             ("Ritmo tiro", f"{fire_rate:.1f}/s"),
-            ("Balas/salva", str(1 + player.passives.get("multishot", 0))),
+            ("Balas/salva", str(game.ranged_projectiles_per_salvo(player))),
             ("Vampirismo", f"{player.passives.get('vampirism', 0) * 10}%"),
             ("Pente Extra", f"+{player.passives.get('magazine', 0)}"),
             ("Recarga Rapida", f"-{player.passives.get('reload_speed', 0)}s"),
@@ -747,6 +825,42 @@ class HudMenu:
 
         passive = f"Pts item {inv.points}"
         self._render_fit(self.font_tiny, passive, (x + self._s(10), y + h - self._s(20)), hex_color(COLORS["poison"]), w - self._s(20))
+        return rect
+
+    def _draw_chalice_tracker(self, game, x, y):
+        fragments = getattr(game, "chalice_fragments", None)
+        if not fragments:
+            return None
+        entries = CHALICE_FRAGMENTS
+        collected = sum(1 for entry in entries if fragments.get(entry["key"], False))
+        icon = self._s(26)
+        gap = self._s(4)
+        title_w = self._s(88)
+        w = title_w + len(entries) * icon + (len(entries) - 1) * gap + self._s(8)
+        h = self._s(42)
+        rect = pygame.Rect(x, y, w, h)
+        complete = collected >= len(entries)
+        border = (255, 212, 71) if complete else (180, 136, 36)
+        self._draw_panel_back(rect, alpha=208, border=border, radius=3)
+        title_color = (255, 212, 71) if not complete else (53, 240, 107)
+        self.font_tiny.render_to(self.screen, (x + self._s(8), y + self._s(5)), "CALICE", title_color)
+        self.font_tiny.render_to(self.screen, (x + self._s(8), y + self._s(22)), f"{collected}/{len(entries)} FRAG", hex_color(COLORS["text"]))
+        ix = x + title_w
+        for entry in entries:
+            active = fragments.get(entry["key"], False)
+            color = (255, 212, 71) if active else (43, 52, 76)
+            border_color = (255, 247, 214) if active else (94, 105, 134)
+            text_color = (5, 5, 10) if active else (167, 176, 199)
+            slot = pygame.Rect(ix, y + self._s(8), icon, icon)
+            pygame.draw.rect(self.screen, color, slot, border_radius=1)
+            pygame.draw.rect(self.screen, border_color, slot, width=2, border_radius=1)
+            if active:
+                pygame.draw.rect(self.screen, (255, 255, 255, 55), slot.inflate(-6, -6), width=1)
+            label = entry["label"]
+            label = self._fit_text(self.font_tiny, label, icon - self._s(3))
+            surf, sr = self.font_tiny.render(label, text_color)
+            self.screen.blit(surf, (slot.centerx - sr.width // 2, slot.centery - sr.height // 2))
+            ix += icon + gap
         return rect
 
     def _draw_quest_panel(self, game, x=None, y=None, w=None, compact=False):
@@ -896,13 +1010,8 @@ class HudMenu:
         arrow_dist = self._s(130)
         arrow_pos = Vector2(center_x, center_y) + Vector2(math.cos(angle), math.sin(angle)) * arrow_dist
         
-        # Altar type colors
-        if closest.kind == "weapon_altar":
-            color = (239, 68, 68) # Red
-        elif closest.kind == "skill_altar":
-            color = (139, 92, 246) # Purple
-        else:
-            color = (245, 158, 11) # Gold
+        style = arcade_theme.altar_style(closest.kind)
+        color = arcade_theme.rgb(style["color"])
             
         diff_norm = diff.normalize() if dist > 0 else Vector2(1, 0)
         p1 = arrow_pos + diff_norm * self._s(16)
@@ -915,7 +1024,7 @@ class HudMenu:
         pygame.draw.polygon(self.screen, (255, 255, 255), [p1, p2, p3], 1)
         
         # Text distance
-        dist_text = f"{int(dist//10)}m"
+        dist_text = f"{style['label']} {int(dist//10)}m"
         rect = self.font_tiny.get_rect(dist_text)
         self.font_tiny.render_to(self.screen, (int(arrow_pos.x - rect.width // 2), int(arrow_pos.y + self._s(12))), dist_text, color)
 
@@ -949,7 +1058,7 @@ class HudMenu:
         w = self._s(120)
         h = self._s(34)
         x = SCREEN_WIDTH // 2 - w // 2
-        y = self._s(10)
+        y = self._top_h() + self._s(8)
         
         rect = pygame.Rect(x, y, w, h)
         border_rgb = hex_color(p_color)
@@ -968,17 +1077,22 @@ class HudMenu:
     def _draw_heat_gauge(self, game):
         import math
         heat = getattr(game, "heat_level", 0.0)
+        reaper_alive = any(enemy.kind == "reaper" for enemy in getattr(game, "enemies", []))
         
         w = self._s(160)
         h = self._s(10)
         x = SCREEN_WIDTH // 2 - w // 2
-        y = self._s(50)
+        y = self._top_h() + self._s(66)
         
         bg_rect = pygame.Rect(x - self._s(8), y - self._s(18), w + self._s(16), h + self._s(24))
         self._draw_panel_back(bg_rect, alpha=160, border=(30, 41, 59), radius=4)
         
         label_text = f"AMEACA: {heat:.0f}%"
-        if heat >= 75.0:
+        if reaper_alive:
+            pulse = 127 + int(128 * math.sin(game.time_alive * 14.0))
+            label_color = (248, 113, 113) if pulse > 127 else (254, 226, 226)
+            label_text = f"CEIFADOR {getattr(game, 'reaper_defeats', 0) + 1} NA AREA"
+        elif heat >= 75.0:
             pulse = 127 + int(128 * math.sin(game.time_alive * 12.0))
             label_color = (239, 68, 68) if pulse > 127 else (251, 191, 36)
             label_text = "AMEACA MAXIMA!"

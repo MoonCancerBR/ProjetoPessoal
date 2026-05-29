@@ -8,20 +8,30 @@ from pygame.math import Vector2
 
 if __package__:
     from .config.config_loader import load_settings
-    from .config.runtime import configure_file_logging, logger
+    from .config.runtime import logger
     from .data.constants import *
     from .data.items import BASE_ITEM_KEYS
     from .data.encyclopedia import ENCYCLOPEDIA_CATEGORIES
+    from .core.records import add_record, delete_record, qualifies, total_score
+    from .core.meta_progress import CHARACTER_UPGRADES, character_upgrades, is_character_unlocked, purchase_upgrade_level, save_active_upgrade_levels, unlock_character
     from .core.game_logic import GameLogic
-    from .presentation.ui import UI
+    from .presentation.bootstrap import attach_virtual_screen, init_pygame_runtime
+    from .presentation.altar_routing import handle_altar_menu_transition
+    from .presentation.runtime_loop import present_virtual_screen, scaled_event_pos, scaled_mouse_pos, update_aim_state
+    from .presentation.state_rendering import render_state
 else:
     from Sobrevivencia.config.config_loader import load_settings
-    from Sobrevivencia.config.runtime import configure_file_logging, logger
+    from Sobrevivencia.config.runtime import logger
     from Sobrevivencia.data.constants import *
     from Sobrevivencia.data.items import BASE_ITEM_KEYS
     from Sobrevivencia.data.encyclopedia import ENCYCLOPEDIA_CATEGORIES
+    from Sobrevivencia.core.records import add_record, delete_record, qualifies, total_score
+    from Sobrevivencia.core.meta_progress import CHARACTER_UPGRADES, character_upgrades, is_character_unlocked, purchase_upgrade_level, save_active_upgrade_levels, unlock_character
     from Sobrevivencia.core.game_logic import GameLogic
-    from Sobrevivencia.presentation.ui import UI
+    from Sobrevivencia.presentation.bootstrap import attach_virtual_screen, init_pygame_runtime
+    from Sobrevivencia.presentation.altar_routing import handle_altar_menu_transition
+    from Sobrevivencia.presentation.runtime_loop import present_virtual_screen, scaled_event_pos, scaled_mouse_pos, update_aim_state
+    from Sobrevivencia.presentation.state_rendering import render_state
 
 
 if __package__:
@@ -38,19 +48,7 @@ else:
 class SobrevivenciaGame(InputManager, MenuController):
     def run(self):
         settings = load_settings()
-        pygame.init()
-        pygame.font.init()
-        pygame.freetype.init()
-        pygame.joystick.init()
-
-        configure_file_logging("game.log", level="INFO")
-        logger.info("Sistema inicializado. Iniciando SobrevivenciaGame...")
-        pygame.display.set_caption("Sobrevivencia - Top Down Survival")
-        fullscreen = bool(settings.get("fullscreen", False))
-        screen, fullscreen = self._set_display_mode(fullscreen, None)
-        clock = pygame.time.Clock()
-        ui = UI(screen)
-        menu_manager = MenuManager(screen)
+        screen, fullscreen, clock, ui, menu_manager = init_pygame_runtime(settings, self._set_display_mode)
 
         # Menu Callbacks
         def on_start_click():
@@ -73,6 +71,14 @@ class SobrevivenciaGame(InputManager, MenuController):
             encyclopedia_selected = 0
             state = "encyclopedia"
 
+        def on_records_click():
+            nonlocal state
+            state = "records"
+
+        def on_coin_shop_click():
+            nonlocal state
+            state = "coin_shop"
+
         def on_settings_click():
             nonlocal state, settings_return_state, capture_binding
             settings_return_state = "start"
@@ -83,7 +89,7 @@ class SobrevivenciaGame(InputManager, MenuController):
             nonlocal running
             running = False
 
-        menu_manager.create_start_menu(on_start_click, on_commands_click, on_settings_click, on_quit_click, on_encyclopedia_click)
+        menu_manager.create_start_menu(on_start_click, on_commands_click, on_settings_click, on_quit_click, on_encyclopedia_click, on_records_click, on_coin_shop_click)
 
         def on_resume_click():
             nonlocal state
@@ -102,19 +108,13 @@ class SobrevivenciaGame(InputManager, MenuController):
             state = "skills"
             skill_selected = min(skill_selected, max(0, len(game.get_player(0).passives) - 1))
 
-        def on_stat_shop_click():
-            nonlocal state, stat_shop_selected, stat_shop_return_state
-            stat_shop_return_state = "paused"
-            state = "stat_shop"
-            stat_shop_selected = 0
-
         def on_pause_encyclopedia_click():
             nonlocal state, encyclopedia_return_state, encyclopedia_selected
             encyclopedia_return_state = "paused"
             encyclopedia_selected = 0
             state = "encyclopedia"
 
-        menu_manager.create_pause_menu(on_resume_click, on_inventory_click, on_skills_click, on_stat_shop_click, on_settings_click, on_quit_click, on_pause_encyclopedia_click)
+        menu_manager.create_pause_menu(on_resume_click, on_inventory_click, on_skills_click, on_settings_click, on_quit_click, on_pause_encyclopedia_click)
 
         game = GameLogic()
         controls = self._default_bindings()
@@ -147,8 +147,15 @@ class SobrevivenciaGame(InputManager, MenuController):
         self.point_confirm_max_quantity = 1
         self.point_confirm_total_cost = 0
         self._point_confirm_action_marker = None
+        self.record_name_text = ""
+        self.record_details_index = 0
+        self.record_delete_index = 0
+        record_pending_game_over = False
         game_over_selected = 0
         stat_shop_selected = 0
+        coin_shop_selected = 0
+        character_unlock_selected = 0
+        character_upgrade_selected = 0
         inventory_tab = "items"
         mode_selected = 0
         multiplayer_selected = False
@@ -165,6 +172,41 @@ class SobrevivenciaGame(InputManager, MenuController):
         stat_shop_return_state = "paused"
         settings_return_state = "start"
         capture_binding = None
+        self.character_unlock_message = ""
+        self.character_upgrade_draft = {key: value["active_level"] for key, value in character_upgrades().items()}
+        self.character_upgrade_pending_key = ""
+
+        def selected_character_key(player_index=0):
+            keys = list(CHARACTERS.keys())
+            index = character_selected_2 if player_index == 1 else character_selected
+            return keys[index]
+
+        def selected_party_unlocked():
+            if not is_character_unlocked(selected_character_key(0)):
+                return False
+            if multiplayer_selected and not is_character_unlocked(selected_character_key(1)):
+                return False
+            return True
+
+        def locked_character_message():
+            key = selected_character_key(1 if multiplayer_selected and character_select_player == 1 else 0)
+            name = CHARACTERS[key]["name"]
+            return f"{name} bloqueado. Desbloqueie na Loja de Moedas."
+
+        def refresh_character_upgrade_draft():
+            self.character_upgrade_draft = {key: value["active_level"] for key, value in character_upgrades().items()}
+
+        def change_character_upgrade_level(key, delta):
+            saved = character_upgrades()
+            if key not in saved:
+                return
+            purchased = saved[key]["purchased_level"]
+            current = int(self.character_upgrade_draft.get(key, saved[key]["active_level"]))
+            if delta > 0 and current >= purchased:
+                self.character_upgrade_pending_key = key
+                return "confirm"
+            self.character_upgrade_draft[key] = max(0, min(purchased, current + delta))
+            return "changed"
         special_holding = {0: False, 1: False}
         special_hold_time = {0: 0.0, 1: 0.0}
         special_hold_triggered = {0: False, 1: False}
@@ -176,10 +218,7 @@ class SobrevivenciaGame(InputManager, MenuController):
         aim_mode = "mouse"
         running = True
         
-        # Virtual Screen para Smoothscale Fullscreen
-        self.virtual_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        ui.screen = self.virtual_screen
-        menu_manager.screen = self.virtual_screen
+        attach_virtual_screen(self, ui, menu_manager)
         self.active_device = "keyboard" # "keyboard" ou "joystick"
         self.control_preference = "auto" # "auto", "keyboard", "joystick"
 
@@ -191,30 +230,18 @@ class SobrevivenciaGame(InputManager, MenuController):
                     logger.info(f"Loop running... State: {state}")
             
             final_screen = pygame.display.get_surface()
-            raw_mouse_pos = pygame.mouse.get_pos()
-            fw, fh = final_screen.get_size()
-            vw, vh = self.virtual_screen.get_size()
-            if fw != vw or fh != vh:
-                mouse_pos = (int(raw_mouse_pos[0] * vw / fw), int(raw_mouse_pos[1] * vh / fh))
-            else:
-                mouse_pos = raw_mouse_pos
-                
-            joystick_aim = self._joystick_aim_vector()
-            if joystick_aim.length_squared() > 0:
-                joystick_aim_dir = joystick_aim.normalize()
-                aim_mode = "joystick"
-            aim_pos = self._aim_screen_pos(game, joystick_aim_dir) if aim_mode == "joystick" and not game.multiplayer else mouse_pos
-            aim_world = ui.screen_to_world(aim_pos, game.camera)
-            p2_aim_screen = None
-            p2_aim_world = None
-            if game.multiplayer and game.player2 is not None:
-                p2_aim_screen = self._aim_screen_pos_for(game, game.player2, joystick_aim_dir)
-                p2_aim_world = ui.screen_to_world(p2_aim_screen, game.camera)
+            mouse_pos = scaled_mouse_pos(final_screen, self.virtual_screen)
+            joystick_aim_dir, aim_mode, aim_pos, aim_world, p2_aim_screen, p2_aim_world = update_aim_state(
+                self, game, ui, mouse_pos, joystick_aim_dir, aim_mode
+            )
 
             ui.sync_menu_windows(state)
             for event in self._poll_events(game):
                 self._prepare_input_event(event)
                 ui.gui_manager.process_events(event)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and state == "records":
+                    state = "start"
+                    continue
                 if state == "inventory":
                     action = ui.handle_inventory_event(event)
                     if action:
@@ -224,8 +251,25 @@ class SobrevivenciaGame(InputManager, MenuController):
                         elif action == "toggle_menu_player":
                             game.menu_player_index = 1 - game.menu_player_index
                             inventory_selected = 0
+                        elif action.startswith("stamp_select:"):
+                            inventory_selected = int(action.split(":", 1)[1])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "black_market_altar":
+                                player = game.get_player(game.menu_player_index)
+                                reserve_start = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", []))
+                                if inventory_selected >= reserve_start:
+                                    self._toggle_stamp_sale_mark(game, inventory_selected)
                         elif action.startswith("shop_select:"):
                             inventory_selected = int(action.split(":", 1)[1])
+                        elif action.startswith("item_select:"):
+                            inventory_selected = int(action.split(":", 1)[1])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "black_market_altar":
+                                inv = game.get_inventory(game.menu_player_index)
+                                raw_items = inv.item_list()
+                                active_items = [item for item in raw_items if inv.is_active(item.slot_key)]
+                                if inventory_selected >= len(active_items) and inventory_selected < len(raw_items):
+                                    self._toggle_inventory_sale_mark(game, raw_items[inventory_selected].slot_key)
                         elif action == "shop_buy":
                             shop_keys = list(BASE_ITEM_KEYS)
                             if inventory_selected < len(shop_keys):
@@ -333,9 +377,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                             game.menu_player_index = 0
                             skill_selected = min(skill_selected, max(0, len(game.get_player(0).passives) - 1))
                         elif action == "stat_shop":
-                            stat_shop_return_state = "paused"
-                            state = "stat_shop"
-                            stat_shop_selected = 0
+                            game.message = "Loja de Status disponivel apenas no Altar de Status."
                         elif action == "change_character":
                             character_selected = self._current_character_index(game)
                             character_selected_2 = self._current_character_index(game, 1)
@@ -367,6 +409,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                         elif action == "commands":
                             commands_return_state = "start"
                             state = "commands"
+                        elif action == "records":
+                            state = "records"
+                        elif action == "coin_shop":
+                            state = "coin_shop"
                         elif action == "encyclopedia":
                             encyclopedia_return_state = "start"
                             encyclopedia_selected = 0
@@ -386,6 +432,8 @@ class SobrevivenciaGame(InputManager, MenuController):
                     action = ui.handle_system_menus_event(event, game)
                     if action == "restart":
                         game.restart()
+                        record_pending_game_over = False
+                        self.record_name_text = ""
                         state = "playing"
                     elif action == "change_character":
                         character_selected = self._current_character_index(game)
@@ -400,6 +448,70 @@ class SobrevivenciaGame(InputManager, MenuController):
                     elif action == "quit":
                         running = False
                         return_action = "quit"
+                elif state == "records":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "records_back":
+                        state = "start"
+                    elif action and action.startswith("record_details:"):
+                        self.record_details_index = int(action.split(":", 1)[1])
+                        state = "record_details"
+                    elif action and action.startswith("record_delete:"):
+                        self.record_delete_index = int(action.split(":", 1)[1])
+                        state = "record_delete_confirm"
+                elif state == "record_details":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "records_back":
+                        state = "records"
+                    elif action == "record_kills":
+                        state = "record_kills"
+                elif state == "record_kills":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "records_back":
+                        state = "record_details"
+                elif state == "record_delete_confirm":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "record_delete_yes":
+                        delete_record(self.record_delete_index)
+                        state = "records"
+                    elif action in ("record_delete_no", "records_back"):
+                        state = "records"
+                elif state == "coin_shop":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "coin_shop_back":
+                        state = "start"
+                    elif action == "coin_shop_characters":
+                        character_unlock_selected = 0
+                        state = "character_unlock"
+                    elif action == "coin_shop_upgrades":
+                        refresh_character_upgrade_draft()
+                        character_upgrade_selected = 0
+                        state = "character_upgrades"
+                elif state == "character_select":
+                    action = ui.handle_system_menus_event(event, game)
+                    if action == "prev_char":
+                        if multiplayer_selected and character_select_player == 1:
+                            character_selected_2 = (character_selected_2 - 1) % len(CHARACTERS)
+                        else:
+                            character_selected = (character_selected - 1) % len(CHARACTERS)
+                    elif action == "next_char":
+                        if multiplayer_selected and character_select_player == 1:
+                            character_selected_2 = (character_selected_2 + 1) % len(CHARACTERS)
+                        else:
+                            character_selected = (character_selected + 1) % len(CHARACTERS)
+                    elif action == "confirm":
+                        if not is_character_unlocked(selected_character_key(0)):
+                            game.message = locked_character_message()
+                        elif multiplayer_selected and character_select_player == 0:
+                            character_select_player = 1
+                        elif not selected_party_unlocked():
+                            game.message = locked_character_message()
+                        else:
+                            char_class = list(CHARACTERS.keys())[character_selected]
+                            char_class_2 = list(CHARACTERS.keys())[character_selected_2]
+                            game = GameLogic(char_class, char_class_2, multiplayer_selected)
+                            record_pending_game_over = False
+                            self.record_name_text = ""
+                            state = "playing"
 
                 if event.type == pygame.QUIT:
                     return_action = "menu"
@@ -459,6 +571,16 @@ class SobrevivenciaGame(InputManager, MenuController):
                 elif event.type == pygame.MOUSEMOTION:
                     aim_mode = "mouse"
 
+                elif event.type == pygame.MOUSEWHEEL:
+                    aim_mode = "mouse"
+                    if state == "skills":
+                        keys = list(game.get_player(game.menu_player_index).passives.keys())
+                        if keys:
+                            if event.y > 0:
+                                skill_selected = max(0, skill_selected - 1)
+                            elif event.y < 0:
+                                skill_selected = min(len(keys) - 1, skill_selected + 1)
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     aim_mode = "mouse"
                     if state == "settings" and capture_binding:
@@ -468,11 +590,18 @@ class SobrevivenciaGame(InputManager, MenuController):
                         continue
 
                     clicked_button = False
+                    if state == "skills" and event.button in (4, 5):
+                        keys = list(game.get_player(game.menu_player_index).passives.keys())
+                        if keys:
+                            if event.button == 4:
+                                skill_selected = max(0, skill_selected - 1)
+                            else:
+                                skill_selected = min(len(keys) - 1, skill_selected + 1)
+                        continue
+
                     if event.button == 1:
                         final_screen = pygame.display.get_surface()
-                        fw, fh = final_screen.get_size()
-                        vw, vh = self.virtual_screen.get_size()
-                        ev_pos = (int(event.pos[0] * vw / fw), int(event.pos[1] * vh / fh)) if (fw != vw or fh != vh) else event.pos
+                        ev_pos = scaled_event_pos(event.pos, final_screen, self.virtual_screen)
                         for action, rect in button_rects:
                             if rect.collidepoint(ev_pos):
                                 clicked_button = True
@@ -507,6 +636,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     elif action.startswith("encyclopedia_select:"):
                                         encyclopedia_selected = int(action.split(":", 1)[1])
                                     break
+                                if state == "progression":
+                                    if action == "progression_back":
+                                        state = "paused"
+                                    break
                                 if action == "character_select":
                                     state = "mode_select" if self._joystick_count() else "character_select"
                                     character_selected = 0
@@ -524,12 +657,18 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     character_cancel_state = "mode_select"
                                     break
                                 if action == "start_game":
-                                    if multiplayer_selected and character_select_player == 0:
+                                    if not is_character_unlocked(selected_character_key(0)):
+                                        game.message = locked_character_message()
+                                    elif multiplayer_selected and character_select_player == 0:
                                         character_select_player = 1
+                                    elif not selected_party_unlocked():
+                                        game.message = locked_character_message()
                                     else:
                                         char_class = list(CHARACTERS.keys())[character_selected]
                                         char_class_2 = list(CHARACTERS.keys())[character_selected_2]
                                         game = GameLogic(char_class, char_class_2, multiplayer_selected)
+                                        record_pending_game_over = False
+                                        self.record_name_text = ""
                                         state = "playing"
                                     break
                                 if action == "change_character":
@@ -553,6 +692,106 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     break
                                 if state == "point_confirm":
                                     state = self._handle_point_confirm_choice(action, game)
+                                    break
+                                if state == "records":
+                                    if action.startswith("record_details:"):
+                                        self.record_details_index = int(action.split(":", 1)[1])
+                                        state = "record_details"
+                                    elif action.startswith("record_delete:"):
+                                        self.record_delete_index = int(action.split(":", 1)[1])
+                                        state = "record_delete_confirm"
+                                    elif action == "records_back":
+                                        state = "start"
+                                    break
+                                if state == "record_details":
+                                    if action == "records_back":
+                                        state = "records"
+                                    elif action == "record_kills":
+                                        state = "record_kills"
+                                    break
+                                if state == "record_kills":
+                                    if action == "records_back":
+                                        state = "record_details"
+                                    break
+                                if state == "record_delete_confirm":
+                                    if action == "record_delete_yes":
+                                        delete_record(self.record_delete_index)
+                                        state = "records"
+                                    elif action in ("record_delete_no", "records_back"):
+                                        state = "records"
+                                    break
+                                if state == "coin_shop":
+                                    if action == "coin_shop_back":
+                                        state = "start"
+                                    elif action == "coin_shop_characters":
+                                        character_unlock_selected = 0
+                                        state = "character_unlock"
+                                    elif action == "coin_shop_upgrades":
+                                        refresh_character_upgrade_draft()
+                                        character_upgrade_selected = 0
+                                        state = "character_upgrades"
+                                    elif action.startswith("coin_shop_"):
+                                        game.message = "Loja de moedas: categoria em desenvolvimento."
+                                    break
+                                if state == "character_upgrades":
+                                    if action == "char_upgrades_back":
+                                        state = "coin_shop"
+                                    elif action == "char_upgrades_save":
+                                        save_active_upgrade_levels(self.character_upgrade_draft)
+                                        game.message = "Melhorias salvas."
+                                        state = "coin_shop"
+                                    elif action.startswith("char_upgrade_minus:"):
+                                        key = action.split(":", 1)[1]
+                                        character_upgrade_selected = list(CHARACTER_UPGRADES.keys()).index(key)
+                                        change_character_upgrade_level(key, -1)
+                                    elif action.startswith("char_upgrade_plus:"):
+                                        key = action.split(":", 1)[1]
+                                        character_upgrade_selected = list(CHARACTER_UPGRADES.keys()).index(key)
+                                        result = change_character_upgrade_level(key, 1)
+                                        if result == "confirm":
+                                            state = "character_upgrade_confirm"
+                                    break
+                                if state == "character_upgrade_confirm":
+                                    if action == "char_upgrade_confirm_yes":
+                                        ok, msg, _ = purchase_upgrade_level(self.character_upgrade_pending_key)
+                                        refresh_character_upgrade_draft()
+                                        game.message = msg
+                                        state = "character_upgrades"
+                                    elif action in ("char_upgrade_confirm_no", "char_upgrades_back"):
+                                        state = "character_upgrades"
+                                    break
+                                if state == "character_unlock":
+                                    if action == "character_unlock_back":
+                                        state = "coin_shop"
+                                    elif action.startswith("character_unlock_select:"):
+                                        character_unlock_selected = int(action.split(":", 1)[1])
+                                        state = "character_unlock_detail"
+                                    break
+                                if state == "character_unlock_detail":
+                                    if action == "character_unlock_back":
+                                        state = "character_unlock"
+                                    elif action == "character_unlock_buy":
+                                        state = "character_unlock_confirm"
+                                    break
+                                if state == "character_unlock_confirm":
+                                    if action == "character_unlock_confirm_yes":
+                                        key = list(CHARACTERS.keys())[character_unlock_selected]
+                                        _, msg, _ = unlock_character(key)
+                                        game.message = msg
+                                        state = "character_unlock_detail"
+                                    elif action in ("character_unlock_confirm_no", "character_unlock_back"):
+                                        state = "character_unlock_detail"
+                                    break
+                                if state == "record_name":
+                                    if action == "record_save":
+                                        add_record(self.record_name_text, game)
+                                        self.record_name_text = ""
+                                        record_pending_game_over = False
+                                        state = "game_over"
+                                    elif action == "record_skip":
+                                        self.record_name_text = ""
+                                        record_pending_game_over = False
+                                        state = "game_over"
                                     break
                                 if state == "rng_result":
                                     if action == "rng_result_ok":
@@ -629,6 +868,9 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     state = "settings"
                                     capture_binding = None
                                     break
+                                elif action == "progression":
+                                    state = "progression"
+                                    break
                                 elif action == "skills":
                                     skills_return_state = "paused"
                                 elif action == "stat_shop":
@@ -676,6 +918,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                             special_hold_time[0] = 0.0
                             special_hold_triggered[0] = False
                             special_combo_checked[0] = False
+                        elif self._action_pressed(event, controls, "combo_special"):
+                            game.try_combo_special(aim_world, 0)
+                        elif self._action_pressed(event, controls, "omni_active"):
+                            game.try_omni_active()
                         elif self._action_pressed(event, controls, "inventory"):
                             game.menu_player_index = 0
                             state = "inventory"
@@ -690,9 +936,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                             special_holding[0] = False
                             special_combo_checked[0] = False
                         elif self._action_pressed(event, controls, "stat_shop"):
-                            stat_shop_return_state = "playing"
-                            state = "stat_shop"
-                            stat_shop_selected = 0
+                            game.message = "Loja de Status disponivel apenas no Altar de Status."
                             special_holding[0] = False
                             special_combo_checked[0] = False
 
@@ -721,6 +965,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                             elif action == "commands":
                                 commands_return_state = "start"
                                 state = "commands"
+                            elif action == "records":
+                                state = "records"
+                            elif action == "coin_shop":
+                                state = "coin_shop"
                             elif action == "encyclopedia":
                                 encyclopedia_return_state = "start"
                                 encyclopedia_selected = 0
@@ -734,6 +982,94 @@ class SobrevivenciaGame(InputManager, MenuController):
                         elif self._menu_back_pressed():
                             running = False
                             return_action = "menu"
+                    elif state == "records":
+                        if self._menu_back_pressed() or self._menu_confirm_pressed():
+                            state = "start"
+                    elif state == "record_details":
+                        if self._menu_back_pressed() or self._menu_confirm_pressed():
+                            state = "records"
+                    elif state == "record_kills":
+                        if self._menu_back_pressed() or self._menu_confirm_pressed():
+                            state = "record_details"
+                    elif state == "record_delete_confirm":
+                        if self._menu_confirm_pressed():
+                            delete_record(self.record_delete_index)
+                            state = "records"
+                        elif self._menu_back_pressed():
+                            state = "records"
+                    elif state == "coin_shop":
+                        if self._menu_up_pressed():
+                            coin_shop_selected = (coin_shop_selected - 1) % 4
+                        elif self._menu_down_pressed():
+                            coin_shop_selected = (coin_shop_selected + 1) % 4
+                        elif self._menu_confirm_pressed():
+                            if coin_shop_selected == 3:
+                                state = "start"
+                            elif coin_shop_selected == 1:
+                                character_unlock_selected = 0
+                                state = "character_unlock"
+                            elif coin_shop_selected == 2:
+                                refresh_character_upgrade_draft()
+                                character_upgrade_selected = 0
+                                state = "character_upgrades"
+                            else:
+                                game.message = "Loja de moedas: categoria em desenvolvimento."
+                        elif self._menu_back_pressed():
+                            state = "start"
+                    elif state == "character_upgrades":
+                        keys = list(CHARACTER_UPGRADES.keys())
+                        if self._menu_up_pressed():
+                            character_upgrade_selected = (character_upgrade_selected - 1) % len(keys)
+                        elif self._menu_down_pressed():
+                            character_upgrade_selected = (character_upgrade_selected + 1) % len(keys)
+                        elif self._menu_left_pressed():
+                            change_character_upgrade_level(keys[character_upgrade_selected], -1)
+                        elif self._menu_right_pressed() or self._menu_confirm_pressed():
+                            result = change_character_upgrade_level(keys[character_upgrade_selected], 1)
+                            if result == "confirm":
+                                state = "character_upgrade_confirm"
+                        elif self._menu_back_pressed():
+                            save_active_upgrade_levels(self.character_upgrade_draft)
+                            game.message = "Melhorias salvas."
+                            state = "coin_shop"
+                    elif state == "character_upgrade_confirm":
+                        if self._menu_confirm_pressed():
+                            _, msg, _ = purchase_upgrade_level(self.character_upgrade_pending_key)
+                            refresh_character_upgrade_draft()
+                            game.message = msg
+                            state = "character_upgrades"
+                        elif self._menu_back_pressed():
+                            state = "character_upgrades"
+                    elif state == "character_unlock":
+                        if self._menu_left_pressed():
+                            character_unlock_selected = max(0, character_unlock_selected - 1)
+                        elif self._menu_right_pressed():
+                            character_unlock_selected = min(len(CHARACTERS) - 1, character_unlock_selected + 1)
+                        elif self._menu_up_pressed():
+                            character_unlock_selected = max(0, character_unlock_selected - 2)
+                        elif self._menu_down_pressed():
+                            character_unlock_selected = min(len(CHARACTERS) - 1, character_unlock_selected + 2)
+                        elif self._menu_confirm_pressed():
+                            state = "character_unlock_detail"
+                        elif self._menu_back_pressed():
+                            state = "coin_shop"
+                    elif state == "character_unlock_detail":
+                        if self._menu_confirm_pressed():
+                            key = list(CHARACTERS.keys())[character_unlock_selected]
+                            if is_character_unlocked(key):
+                                game.message = "Personagem ja desbloqueado."
+                            else:
+                                state = "character_unlock_confirm"
+                        elif self._menu_back_pressed():
+                            state = "character_unlock"
+                    elif state == "character_unlock_confirm":
+                        if self._menu_confirm_pressed():
+                            key = list(CHARACTERS.keys())[character_unlock_selected]
+                            _, msg, _ = unlock_character(key)
+                            game.message = msg
+                            state = "character_unlock_detail"
+                        elif self._menu_back_pressed():
+                            state = "character_unlock_detail"
                     elif state == "mode_select":
                         if self._menu_up_pressed():
                             mode_selected = (mode_selected - 1) % 3
@@ -763,12 +1099,18 @@ class SobrevivenciaGame(InputManager, MenuController):
                             else:
                                 character_selected = (character_selected + 1) % len(CHARACTERS)
                         elif self._menu_confirm_pressed():
-                            if multiplayer_selected and character_select_player == 0:
+                            if not is_character_unlocked(selected_character_key(0)):
+                                game.message = locked_character_message()
+                            elif multiplayer_selected and character_select_player == 0:
                                 character_select_player = 1
+                            elif not selected_party_unlocked():
+                                game.message = locked_character_message()
                             else:
                                 char_class = list(CHARACTERS.keys())[character_selected]
                                 char_class_2 = list(CHARACTERS.keys())[character_selected_2]
                                 game = GameLogic(char_class, char_class_2, multiplayer_selected)
+                                record_pending_game_over = False
+                                self.record_name_text = ""
                                 state = "playing"
                         elif self._menu_back_pressed():
                             if multiplayer_selected and character_select_player == 1:
@@ -778,6 +1120,9 @@ class SobrevivenciaGame(InputManager, MenuController):
                     elif state == "commands":
                         if self._menu_confirm_pressed() or self._menu_back_pressed():
                             state = commands_return_state
+                    elif state == "progression":
+                        if self._menu_confirm_pressed() or self._menu_back_pressed():
+                            state = "paused"
                     elif state == "encyclopedia":
                         entries = ui.filtered_encyclopedia_entries(encyclopedia_category, encyclopedia_query)
                         categories = ("Todos",) + ENCYCLOPEDIA_CATEGORIES
@@ -838,9 +1183,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 skill_selected = min(skill_selected, max(0, len(game.get_player(game.menu_player_index).passives) - 1))
                                 continue
                             if action == "stat_shop":
-                                stat_shop_return_state = "paused"
-                                state = "stat_shop"
-                                stat_shop_selected = 0
+                                game.message = "Loja de Status disponivel apenas no Altar de Status."
                                 continue
                             if action == "change_character":
                                 character_selected = self._current_character_index(game)
@@ -870,6 +1213,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 game.try_dash(p2_aim_world or aim_world, 1)
                             elif self._action_pressed(event, controls, "special"):
                                 game.try_special(p2_aim_world or aim_world, 1)
+                            elif self._action_pressed(event, controls, "combo_special"):
+                                game.try_combo_special(p2_aim_world or aim_world, 1)
+                            elif self._action_pressed(event, controls, "omni_active"):
+                                game.try_omni_active()
                             elif self._action_pressed(event, controls, "inventory"):
                                 game.menu_player_index = 1
                                 state = "inventory"
@@ -880,9 +1227,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 state = "skills"
                                 skill_selected = min(skill_selected, max(0, len(game.get_player(1).passives) - 1))
                             elif self._action_pressed(event, controls, "stat_shop"):
-                                stat_shop_return_state = "playing"
-                                state = "stat_shop"
-                                stat_shop_selected = 0
+                                game.message = "Loja de Status disponivel apenas no Altar de Status."
                             continue
                         if self._action_pressed(event, controls, "pause"):
                             state = "paused"
@@ -915,9 +1260,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                             special_holding[0] = False
                             special_combo_checked[0] = False
                         elif self._action_pressed(event, controls, "stat_shop"):
-                            stat_shop_return_state = "playing"
-                            state = "stat_shop"
-                            stat_shop_selected = 0
+                            game.message = "Loja de Status disponivel apenas no Altar de Status."
                             special_holding[0] = False
                             special_combo_checked[0] = False
 
@@ -943,7 +1286,15 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 game.finish_altar_interaction(destroy=True)
                             state = "playing"
                         elif self._menu_r1_pressed() or self._menu_l1_pressed() or (event.type == pygame.KEYDOWN and event.key == pygame.K_t):
-                            tabs = ["items", "stamps"] + (["shop"] if inv.black_market_unlocked else [])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "weapon_altar":
+                                tabs = ["items"]
+                            elif altar_kind == "stamps_altar":
+                                tabs = ["stamps"]
+                            elif altar_kind == "black_market_altar":
+                                tabs = ["shop", "items", "stamps"]
+                            else:
+                                tabs = ["items", "stamps"]
                             inventory_tab = tabs[(tabs.index(inventory_tab) + 1) % len(tabs)] if inventory_tab in tabs else "items"
                             inventory_selected = 0
                         elif game.multiplayer and self._menu_l3_pressed():
@@ -1052,15 +1403,13 @@ class SobrevivenciaGame(InputManager, MenuController):
                             state = stat_shop_return_state
                         elif not game.stat_shop_offers:
                             if (self._menu_confirm_pressed() or self._menu_y_pressed()) and game.stat_shop_unlocked():
-                                if game.inventory.points >= STAT_SHOP_ROLL_COST:
-                                    self.point_confirm_action = ("roll_stat_shop",)
-                                    self.point_confirm_cost = STAT_SHOP_ROLL_COST
-                                    self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_ROLL_COST} ponto(s) para abrir a loja?"
-                                    self.point_confirm_return = "stat_shop"
-                                    self.point_confirm_selected = 1
-                                    state = "point_confirm"
-                                else:
-                                    game.message = f"Pontos insuficientes (custa {STAT_SHOP_ROLL_COST})."
+                                hp_cost = game._max_health_shop_cost(STAT_SHOP_ROLL_COST)
+                                self.point_confirm_action = ("roll_stat_shop",)
+                                self.point_confirm_cost = hp_cost
+                                self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para abrir o gacha?"
+                                self.point_confirm_return = "stat_shop"
+                                self.point_confirm_selected = 1
+                                state = "point_confirm"
                         else:
                             stat_shop_selected = min(stat_shop_selected, len(game.stat_shop_offers) - 1)
                             if self._menu_left_pressed() or self._menu_up_pressed():
@@ -1079,15 +1428,13 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 else:
                                     game.message = f"Pontos insuficientes (custa {cost})."
                             elif self._menu_x_pressed():
-                                if game.inventory.points >= STAT_SHOP_REROLL_COST:
-                                    self.point_confirm_action = ("reroll_stat_shop", stat_shop_selected)
-                                    self.point_confirm_cost = STAT_SHOP_REROLL_COST
-                                    self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_REROLL_COST} ponto(s) para trocar esta oferta?"
-                                    self.point_confirm_return = "stat_shop"
-                                    self.point_confirm_selected = 1
-                                    state = "point_confirm"
-                                else:
-                                    game.message = f"Pontos insuficientes (custa {STAT_SHOP_REROLL_COST})."
+                                hp_cost = game._max_health_shop_cost(STAT_SHOP_REROLL_COST)
+                                self.point_confirm_action = ("reroll_stat_shop", stat_shop_selected)
+                                self.point_confirm_cost = hp_cost
+                                self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para trocar esta oferta?"
+                                self.point_confirm_return = "stat_shop"
+                                self.point_confirm_selected = 1
+                                state = "point_confirm"
 
                     elif state == "constructions":
                         entry_count = len(ui.construction_catalog())
@@ -1139,6 +1486,8 @@ class SobrevivenciaGame(InputManager, MenuController):
                             go_action = go_options[game_over_selected][1]
                             if go_action == "restart":
                                 game.restart()
+                                record_pending_game_over = False
+                                self.record_name_text = ""
                                 state = "playing"
                             elif go_action == "change_character":
                                 character_selected = self._current_character_index(game)
@@ -1167,7 +1516,113 @@ class SobrevivenciaGame(InputManager, MenuController):
                         special_combo_checked[0] = False
 
                 elif event.type == pygame.KEYDOWN:
-                    if state == "settings":
+                    if state == "record_name":
+                        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                            add_record(self.record_name_text, game)
+                            self.record_name_text = ""
+                            record_pending_game_over = False
+                            state = "game_over"
+                        elif event.key == pygame.K_ESCAPE:
+                            self.record_name_text = ""
+                            record_pending_game_over = False
+                            state = "game_over"
+                        elif event.key == pygame.K_BACKSPACE:
+                            self.record_name_text = self.record_name_text[:-1]
+                        elif len(self.record_name_text) < 16 and event.unicode and (event.unicode.isalnum() or event.unicode in " _-"):
+                            self.record_name_text += event.unicode
+                    elif state == "records":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            state = "start"
+                    elif state == "record_details":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            state = "records"
+                    elif state == "record_kills":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            state = "record_details"
+                    elif state == "record_delete_confirm":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_n):
+                            state = "records"
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_y):
+                            delete_record(self.record_delete_index)
+                            state = "records"
+                    elif state == "coin_shop":
+                        if event.key == pygame.K_UP:
+                            coin_shop_selected = (coin_shop_selected - 1) % 4
+                        elif event.key == pygame.K_DOWN:
+                            coin_shop_selected = (coin_shop_selected + 1) % 4
+                        elif event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                            state = "start"
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            if coin_shop_selected == 3:
+                                state = "start"
+                            elif coin_shop_selected == 1:
+                                character_unlock_selected = 0
+                                state = "character_unlock"
+                            elif coin_shop_selected == 2:
+                                refresh_character_upgrade_draft()
+                                character_upgrade_selected = 0
+                                state = "character_upgrades"
+                            else:
+                                game.message = "Loja de moedas: categoria em desenvolvimento."
+                    elif state == "character_upgrades":
+                        keys = list(CHARACTER_UPGRADES.keys())
+                        if event.key == pygame.K_UP:
+                            character_upgrade_selected = (character_upgrade_selected - 1) % len(keys)
+                        elif event.key == pygame.K_DOWN:
+                            character_upgrade_selected = (character_upgrade_selected + 1) % len(keys)
+                        elif event.key == pygame.K_LEFT:
+                            change_character_upgrade_level(keys[character_upgrade_selected], -1)
+                        elif event.key in (pygame.K_RIGHT, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            result = change_character_upgrade_level(keys[character_upgrade_selected], 1)
+                            if result == "confirm":
+                                state = "character_upgrade_confirm"
+                        elif event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                            save_active_upgrade_levels(self.character_upgrade_draft)
+                            game.message = "Melhorias salvas."
+                            state = "coin_shop"
+                        elif event.key == pygame.K_s:
+                            save_active_upgrade_levels(self.character_upgrade_draft)
+                            game.message = "Melhorias salvas."
+                            state = "coin_shop"
+                    elif state == "character_upgrade_confirm":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_n):
+                            state = "character_upgrades"
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_y):
+                            _, msg, _ = purchase_upgrade_level(self.character_upgrade_pending_key)
+                            refresh_character_upgrade_draft()
+                            game.message = msg
+                            state = "character_upgrades"
+                    elif state == "character_unlock":
+                        if event.key == pygame.K_LEFT:
+                            character_unlock_selected = max(0, character_unlock_selected - 1)
+                        elif event.key == pygame.K_RIGHT:
+                            character_unlock_selected = min(len(CHARACTERS) - 1, character_unlock_selected + 1)
+                        elif event.key == pygame.K_UP:
+                            character_unlock_selected = max(0, character_unlock_selected - 2)
+                        elif event.key == pygame.K_DOWN:
+                            character_unlock_selected = min(len(CHARACTERS) - 1, character_unlock_selected + 2)
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            state = "character_unlock_detail"
+                        elif event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                            state = "coin_shop"
+                    elif state == "character_unlock_detail":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                            state = "character_unlock"
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            key = list(CHARACTERS.keys())[character_unlock_selected]
+                            if is_character_unlocked(key):
+                                game.message = "Personagem ja desbloqueado."
+                            else:
+                                state = "character_unlock_confirm"
+                    elif state == "character_unlock_confirm":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_n):
+                            state = "character_unlock_detail"
+                        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_y):
+                            key = list(CHARACTERS.keys())[character_unlock_selected]
+                            _, msg, _ = unlock_character(key)
+                            game.message = msg
+                            state = "character_unlock_detail"
+                    elif state == "settings":
                         if capture_binding:
                             action_key, slot = capture_binding
                             controls[action_key][slot] = self._binding_from_event(event)
@@ -1218,6 +1673,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                             elif action == "commands":
                                 commands_return_state = "start"
                                 state = "commands"
+                            elif action == "records":
+                                state = "records"
+                            elif action == "coin_shop":
+                                state = "coin_shop"
                             elif action == "encyclopedia":
                                 encyclopedia_return_state = "start"
                                 encyclopedia_selected = 0
@@ -1268,12 +1727,18 @@ class SobrevivenciaGame(InputManager, MenuController):
                             else:
                                 character_selected = (character_selected + 1) % len(CHARACTERS)
                         elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
-                            if multiplayer_selected and character_select_player == 0:
+                            if not is_character_unlocked(selected_character_key(0)):
+                                game.message = locked_character_message()
+                            elif multiplayer_selected and character_select_player == 0:
                                 character_select_player = 1
+                            elif not selected_party_unlocked():
+                                game.message = locked_character_message()
                             else:
                                 char_class = list(CHARACTERS.keys())[character_selected]
                                 char_class_2 = list(CHARACTERS.keys())[character_selected_2]
                                 game = GameLogic(char_class, char_class_2, multiplayer_selected)
+                                record_pending_game_over = False
+                                self.record_name_text = ""
                                 state = "playing"
                         elif event.key == pygame.K_ESCAPE:
                             if multiplayer_selected and character_select_player == 1:
@@ -1299,9 +1764,9 @@ class SobrevivenciaGame(InputManager, MenuController):
                             # Especial normal: disparo imediato, sem hold
                             game.try_special(aim_world, 0)
                         elif self._action_pressed(event, controls, "combo_special"):
-                            combo_holding[0] = True
-                            combo_hold_time[0] = 0.0
-                            combo_hold_triggered[0] = False
+                            game.try_combo_special(aim_world, 0)
+                        elif self._action_pressed(event, controls, "omni_active"):
+                            game.try_omni_active()
                         elif self._action_pressed(event, controls, "inventory"):
                             state = "inventory"
                             game.menu_player_index = 0
@@ -1318,9 +1783,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                             special_combo_checked[0] = False
                             combo_holding[0] = False
                         elif self._action_pressed(event, controls, "stat_shop"):
-                            stat_shop_return_state = "playing"
-                            state = "stat_shop"
-                            stat_shop_selected = 0
+                            game.message = "Loja de Status disponivel apenas no Altar de Status."
                             special_holding[0] = False
                             special_combo_checked[0] = False
                             combo_holding[0] = False
@@ -1352,9 +1815,7 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 skill_selected = min(skill_selected, max(0, len(game.get_player(game.menu_player_index).passives) - 1))
                                 continue
                             if action == "stat_shop":
-                                stat_shop_return_state = "paused"
-                                state = "stat_shop"
-                                stat_shop_selected = 0
+                                game.message = "Loja de Status disponivel apenas no Altar de Status."
                                 continue
                             if action == "change_character":
                                 character_selected = self._current_character_index(game)
@@ -1377,6 +1838,9 @@ class SobrevivenciaGame(InputManager, MenuController):
                     elif state == "commands":
                         if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                             state = commands_return_state
+                    elif state == "progression":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                            state = "paused"
 
                     elif state == "encyclopedia":
                         entries = ui.filtered_encyclopedia_entries(encyclopedia_category, encyclopedia_query)
@@ -1412,15 +1876,13 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 game.finish_altar_interaction(destroy=True)
                             state = stat_shop_return_state
                         elif event.key == pygame.K_r and game.stat_shop_unlocked() and not game.stat_shop_offers:
-                            if game.inventory.points >= STAT_SHOP_ROLL_COST:
-                                self.point_confirm_action = ("roll_stat_shop",)
-                                self.point_confirm_cost = STAT_SHOP_ROLL_COST
-                                self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_ROLL_COST} ponto(s) para abrir a loja?"
-                                self.point_confirm_return = "stat_shop"
-                                self.point_confirm_selected = 1
-                                state = "point_confirm"
-                            else:
-                                game.message = f"Pontos insuficientes (custa {STAT_SHOP_ROLL_COST})."
+                            hp_cost = game._max_health_shop_cost(STAT_SHOP_ROLL_COST)
+                            self.point_confirm_action = ("roll_stat_shop",)
+                            self.point_confirm_cost = hp_cost
+                            self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para abrir o gacha?"
+                            self.point_confirm_return = "stat_shop"
+                            self.point_confirm_selected = 1
+                            state = "point_confirm"
                         elif game.stat_shop_offers:
                             if event.key in (pygame.K_LEFT, pygame.K_a):
                                 stat_shop_selected = (stat_shop_selected - 1) % len(game.stat_shop_offers)
@@ -1444,15 +1906,13 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     game.message = f"Pontos insuficientes (custa {cost})."
                             elif event.key == pygame.K_x:
                                 idx = stat_shop_selected
-                                if game.inventory.points >= STAT_SHOP_REROLL_COST:
-                                    self.point_confirm_action = ("reroll_stat_shop", idx)
-                                    self.point_confirm_cost = STAT_SHOP_REROLL_COST
-                                    self.point_confirm_msg = f"Deseja gastar {STAT_SHOP_REROLL_COST} ponto(s) para trocar esta oferta?"
-                                    self.point_confirm_return = "stat_shop"
-                                    self.point_confirm_selected = 1
-                                    state = "point_confirm"
-                                else:
-                                    game.message = f"Pontos insuficientes (custa {STAT_SHOP_REROLL_COST})."
+                                hp_cost = game._max_health_shop_cost(STAT_SHOP_REROLL_COST)
+                                self.point_confirm_action = ("reroll_stat_shop", idx)
+                                self.point_confirm_cost = hp_cost
+                                self.point_confirm_msg = f"Sacrificar {hp_cost} de vida maxima para trocar esta oferta?"
+                                self.point_confirm_return = "stat_shop"
+                                self.point_confirm_selected = 1
+                                state = "point_confirm"
                             else:
                                 idx = None
                                 if event.key in (pygame.K_1, pygame.K_KP1): idx = 0
@@ -1545,7 +2005,15 @@ class SobrevivenciaGame(InputManager, MenuController):
                             state = "playing"
                             inventory_tab = "items"
                         elif event.key in (pygame.K_TAB, pygame.K_q):
-                            tabs = ["items", "stamps"] + (["shop"] if inv.black_market_unlocked else [])
+                            altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+                            if altar_kind == "weapon_altar":
+                                tabs = ["items"]
+                            elif altar_kind == "stamps_altar":
+                                tabs = ["stamps"]
+                            elif altar_kind == "black_market_altar":
+                                tabs = ["shop", "items", "stamps"]
+                            else:
+                                tabs = ["items", "stamps"]
                             inventory_tab = tabs[(tabs.index(inventory_tab) + 1) % len(tabs)] if inventory_tab in tabs else "items"
                             inventory_selected = 0
                         elif game.multiplayer and event.key == pygame.K_p:
@@ -1591,27 +2059,20 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_e):
                                     game.unequip_stamp(inventory_selected)
                                 elif event.key == pygame.K_f:
-                                    game.setup_stamp_fusion(inventory_selected)
-                                    state = "stamp_fusion_confirm"
-                                    fusion_confirm_selected = 1
+                                    if not self._blocked_static_upgrade(game, "stamp_fuse"):
+                                        game.setup_stamp_fusion(inventory_selected)
+                                        state = "stamp_fusion_confirm"
+                                        fusion_confirm_selected = 1
                                 elif event.key == pygame.K_s:
-                                    player = game.get_player(game.menu_player_index)
-                                    entries = game._stamp_entries(player)
-                                    if inventory_selected < len(entries) and entries[inventory_selected][0] == "reserve":
-                                        stamp = entries[inventory_selected][2]
-                                        try:
-                                            from Sobrevivencia.data.stamps import stamp_sell_value
-                                        except:
-                                            from data.stamps import stamp_sell_value
-                                        value = stamp_sell_value(stamp)
-                                        self.point_confirm_action = ("sell_stamp", inventory_selected)
-                                        self.point_confirm_cost = 0
-                                        self.point_confirm_msg = f"Deseja vender este selo por {value} ponto(s)?"
-                                        self.point_confirm_return = "inventory"
-                                        self.point_confirm_selected = 1
-                                        state = "point_confirm"
-                                    else:
-                                        game.message = "Desequipe o selo antes de vende-lo."
+                                    if self._blocked_static_upgrade(game, "sell_stamp"):
+                                        continue
+                                    self._toggle_stamp_sale_mark(game, inventory_selected)
+                                elif event.key == pygame.K_v:
+                                    if self._blocked_static_upgrade(game, "sell_stamp"):
+                                        continue
+                                    next_state = self._confirm_stamp_sale_marks(game)
+                                    if next_state:
+                                        state = next_state
                                 inventory_selected = max(0, min(inventory_selected, stamp_count - 1))
                         elif inventory_tab == "stamps":
                             player = game.get_player(game.menu_player_index)
@@ -1632,9 +2093,10 @@ class SobrevivenciaGame(InputManager, MenuController):
                                 elif self._menu_y_pressed():
                                     game.equip_stamp("weapon_2", inventory_selected)
                                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_f:
-                                    game.setup_stamp_fusion(inventory_selected)
-                                    state = "stamp_fusion_confirm"
-                                    fusion_confirm_selected = 1
+                                    if not self._blocked_static_upgrade(game, "stamp_fuse"):
+                                        game.setup_stamp_fusion(inventory_selected)
+                                        state = "stamp_fusion_confirm"
+                                        fusion_confirm_selected = 1
                                 inventory_selected = max(0, min(inventory_selected, stamp_count - 1))
 
                         elif items:
@@ -1651,6 +2113,8 @@ class SobrevivenciaGame(InputManager, MenuController):
                             elif event.key == pygame.K_u:
                                 item = items[inventory_selected]
                                 if item.rank == 1 and item.level >= 10 and inv.black_market_unlocked:
+                                    if self._blocked_static_upgrade(game, "transform_inventory"):
+                                        continue
                                     cost = 15
                                     if inv.points >= cost:
                                         self.point_confirm_action = ("transform_inventory", item.slot_key)
@@ -1662,6 +2126,8 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     else:
                                         game.message = "Pontos insuficientes para Transformar (custa 15)."
                                 else:
+                                    if self._blocked_static_upgrade(game, "upgrade_inventory"):
+                                        continue
                                     cost = 7 if item.is_relic else (3 if item.is_hybrid else 1)
                                     if inv.points >= cost:
                                         self.point_confirm_action = ("upgrade_inventory", item.slot_key)
@@ -1673,21 +2139,25 @@ class SobrevivenciaGame(InputManager, MenuController):
                                     else:
                                         game.message = f"Pontos insuficientes (custa {cost})."
                             elif event.key == pygame.K_f:
+                                if self._blocked_static_upgrade(game, "item_fuse"):
+                                    continue
                                 game.mark_or_fuse_item(items[inventory_selected].slot_key)
                                 if game.has_pending_fusion():
                                     state = "fusion_confirm"
                                     fusion_confirm_selected = 1
                             elif event.key == pygame.K_s:
+                                if self._blocked_static_upgrade(game, "sell_inventory"):
+                                    continue
                                 if not inv.is_active(items[inventory_selected].slot_key):
-                                    value = inv.get_sell_value(items[inventory_selected].slot_key)
-                                    self.point_confirm_action = ("sell_inventory", items[inventory_selected].slot_key)
-                                    self.point_confirm_cost = 0
-                                    self.point_confirm_msg = f"Deseja vender este item por {value} ponto(s)?"
-                                    self.point_confirm_return = "inventory"
-                                    self.point_confirm_selected = 1
-                                    state = "point_confirm"
+                                    self._toggle_inventory_sale_mark(game, items[inventory_selected].slot_key)
                                 else:
                                     game.message = "Desequipe o item antes de vende-lo."
+                            elif event.key == pygame.K_v:
+                                if self._blocked_static_upgrade(game, "sell_inventory"):
+                                    continue
+                                next_state = self._confirm_inventory_sale_marks(game)
+                                if next_state:
+                                    state = next_state
 
                             inventory_selected = max(0, min(inventory_selected, len(items) - 1))
 
@@ -1749,6 +2219,8 @@ class SobrevivenciaGame(InputManager, MenuController):
                     elif state == "game_over":
                         if event.key == pygame.K_r:
                             game.restart()
+                            record_pending_game_over = False
+                            self.record_name_text = ""
                             state = "playing"
                         elif event.key in (pygame.K_c, pygame.K_t):
                             character_selected = self._current_character_index(game)
@@ -1763,152 +2235,136 @@ class SobrevivenciaGame(InputManager, MenuController):
 
             ui.sync_menu_windows(state)
             if state == "playing":
-                # Combo Suprema: hold dedicado em combo_special
-                if combo_holding[0]:
-                    if not self._action_currently_active(controls, "combo_special"):
-                        # Botão solto sem atingir o tempo: ignora (não dispara nada)
-                        combo_holding[0] = False
-                        combo_hold_time[0] = 0.0
-                        combo_hold_triggered[0] = False
-                    else:
-                        combo_hold_time[0] += dt
-                        if not combo_hold_triggered[0] and combo_hold_time[0] >= SPECIAL_COMBO_HOLD_SECONDS:
-                            combo_hold_triggered[0] = True
-                            game.try_combo_special(aim_world, 0)
-                            combo_holding[0] = False
                 p1_controls = self._player_one_controls(controls) if game.multiplayer else controls
                 move = self._movement_vector(p1_controls)
                 move_2 = self._joystick_movement_vector() if game.multiplayer else None
+                
+                distortion = getattr(game, "olympus_distortion_type", "")
+                if distortion == "invert_keyboard":
+                    move = move * -1
+                    if move_2: move_2 = move_2 * -1
+                elif distortion == "invert_mouse":
+                    if game.players and not game.players[0].is_down:
+                        aim_dir = (aim_world - game.players[0].pos)
+                        aim_world = game.players[0].pos - aim_dir
+                    if game.multiplayer and game.player2 and not game.player2.is_down and p2_aim_world:
+                        aim_dir2 = (p2_aim_world - game.player2.pos)
+                        p2_aim_world = game.player2.pos - aim_dir2
+
                 game.update(dt, move, aim_world, move_2, p2_aim_world)
-                if getattr(game, "active_altar", None) is not None and getattr(game, "menu_just_opened_by_altar", None) is not None:
-                    kind = game.menu_just_opened_by_altar
-                    game.menu_just_opened_by_altar = None
-                    menu_player = getattr(game, "menu_player_index", 0)
-                    for p in (0, 1):
-                        special_holding[p] = False
-                        special_hold_triggered[p] = False
-                        special_combo_checked[p] = False
-                        combo_holding[p] = False
-                        combo_hold_triggered[p] = False
-                    if kind == "weapon_altar":
-                        state = "inventory"
-                        inventory_tab = "items"
-                        inventory_selected = min(inventory_selected, max(0, len(game.get_inventory(menu_player).item_list()) - 1))
-                    elif kind == "skill_altar":
-                        skills_return_state = "playing"
-                        state = "skills"
-                        skill_selected = min(skill_selected, max(0, len(game.get_player(menu_player).passives) - 1))
-                    elif kind == "stat_altar":
-                        stat_shop_return_state = "playing"
-                        state = "stat_shop"
-                        stat_shop_selected = 0
+                state, inventory_tab, inventory_selected, skill_selected, stat_shop_selected, skills_return_state, stat_shop_return_state = handle_altar_menu_transition(
+                    game,
+                    state,
+                    inventory_tab,
+                    inventory_selected,
+                    skill_selected,
+                    stat_shop_selected,
+                    skills_return_state,
+                    stat_shop_return_state,
+                    special_holding,
+                    special_hold_triggered,
+                    special_combo_checked,
+                    combo_holding,
+                    combo_hold_triggered,
+                )
                 if game.level_up_pending:
                     state = "upgrade"
                     upgrade_selected = 0
                 elif game.game_over:
-                    state = "game_over"
+                    if not record_pending_game_over and qualifies(total_score(game)):
+                        record_pending_game_over = True
+                        self.record_name_text = ""
+                        state = "record_name"
+                    else:
+                        state = "game_over"
                     game_over_selected = 0
-                ui.render_game(game, aim_pos, dt=dt, flip=False, aim_from_joystick=aim_mode == "joystick", p2_aim_pos=p2_aim_screen)
-                button_rects = []
-            elif state == "start":
-                button_rects = ui.render_start(mouse_pos, start_selected)
-            elif state == "mode_select":
-                button_rects = ui.render_mode_select(mouse_pos, mode_selected, self._joystick_count())
-            elif state == "character_select":
-                selected_index = character_selected_2 if multiplayer_selected and character_select_player == 1 else character_selected
-                char_class = list(CHARACTERS.keys())[selected_index]
-                char_class_2 = list(CHARACTERS.keys())[character_selected_2]
-                button_rects = ui.render_character_select(
-                    char_class,
-                    mouse_pos,
-                    multiplayer_selected,
-                    char_class_2,
-                    character_select_player,
+                selections = {
+                    "start": start_selected,
+                    "pause": pause_selected,
+                    "upgrade": upgrade_selected,
+                    "inventory": inventory_selected,
+                    "construction": construction_selected,
+                    "skill": skill_selected,
+                    "settings": settings_selected,
+                    "settings_slot": settings_slot,
+                    "fusion_confirm": fusion_confirm_selected,
+                    "game_over": game_over_selected,
+                    "stat_shop": stat_shop_selected,
+                    "coin_shop": coin_shop_selected,
+                    "character_unlock": character_unlock_selected,
+                    "character_upgrade": character_upgrade_selected,
+                    "mode": mode_selected,
+                    "multiplayer": multiplayer_selected,
+                    "character": character_selected,
+                    "character_2": character_selected_2,
+                    "character_player": character_select_player,
+                    "encyclopedia": encyclopedia_selected,
+                    "encyclopedia_category": encyclopedia_category,
+                    "encyclopedia_query": encyclopedia_query,
+                }
+                button_rects, selections, inventory_tab = render_state(
+                    self, ui, game, state, mouse_pos, aim_pos, aim_mode, p2_aim_screen, dt,
+                    controls, selections, fullscreen, capture_binding, inventory_tab
                 )
-            elif state == "paused":
-                button_rects = ui.render_pause(game, PAUSE_OPTIONS, pause_selected, mouse_pos)
-            elif state == "commands":
-                button_rects = ui.render_commands(mouse_pos, self._command_lines(controls))
-            elif state == "settings":
-                settings_selected = min(settings_selected, len(CONTROL_ACTIONS) - 1)
-                button_rects = ui.render_settings(
-                    self._control_rows(controls),
-                    settings_selected,
-                    settings_slot,
-                    capture_binding,
-                    fullscreen,
-                    self.control_preference,
-                    self._joystick_count(),
-                    mouse_pos,
-                )
-            elif state == "encyclopedia":
-                entries = ui.filtered_encyclopedia_entries(encyclopedia_category, encyclopedia_query)
-                encyclopedia_selected = min(encyclopedia_selected, max(0, len(entries) - 1))
-                button_rects = ui.render_encyclopedia(encyclopedia_selected, mouse_pos, encyclopedia_category, encyclopedia_query)
-            elif state == "stat_shop":
-                button_rects = ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-            elif state == "constructions":
-                construction_selected = min(construction_selected, max(0, len(ui.construction_catalog()) - 1))
-                button_rects = ui.render_constructions(game, construction_selected, mouse_pos)
-            elif state == "skills":
-                skill_selected = min(skill_selected, max(0, len(game.get_player(game.menu_player_index).passives) - 1))
-                button_rects = ui.render_skills(game, skill_selected, mouse_pos)
-            elif state == "upgrade":
-                button_rects = ui.render_upgrade(game, upgrade_selected, mouse_pos)
-            elif state == "inventory":
-                inv = game.get_inventory(game.menu_player_index)
-                if inventory_tab == "shop":
-                    inventory_selected = min(inventory_selected, max(0, len(list(BASE_ITEM_KEYS)) - 1))
-                elif inventory_tab == "stamps":
-                    player = game.get_player(game.menu_player_index)
-                    stamp_count = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])) + len(player.stamp_reserve)
-                    inventory_selected = min(inventory_selected, max(0, stamp_count - 1))
-                else:
-                    inventory_selected = min(inventory_selected, max(0, len(inv.item_list()) - 1))
-                button_rects = ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-            elif state == "fusion_confirm":
-                inventory_selected = min(inventory_selected, max(0, len(game.get_inventory(game.menu_player_index).item_list()) - 1))
-                button_rects = ui.render_fusion_confirm(game, inventory_selected, fusion_confirm_selected, mouse_pos)
-            elif state == "stamp_fusion_confirm":
-                player = game.get_player(game.menu_player_index)
-                stamp_count = len(player.weapon_stamps.get("weapon_1", [])) + len(player.weapon_stamps.get("weapon_2", [])) + len(player.stamp_reserve)
-                inventory_selected = min(inventory_selected, max(0, stamp_count - 1))
-                button_rects = ui.render_stamp_fusion_confirm(game, inventory_selected, fusion_confirm_selected, mouse_pos)
-            elif state == "point_confirm":
-                if self.point_confirm_return == "stat_shop":
-                    ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-                elif self.point_confirm_return == "skills":
-                    ui.render_skills(game, skill_selected, mouse_pos)
-                elif self.point_confirm_return == "inventory":
-                    ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-                self._refresh_point_confirm_quantity(game)
-                button_rects = ui.render_point_confirm(
-                    game,
-                    self.point_confirm_cost,
-                    self.point_confirm_msg,
-                    self.point_confirm_selected,
-                    mouse_pos,
-                    self.point_confirm_quantity,
-                    self.point_confirm_max_quantity,
-                    self.point_confirm_total_cost,
-                )
-            elif state == "rng_result":
-                if self.point_confirm_return == "stat_shop":
-                    ui.render_stat_shop(game, stat_shop_selected, mouse_pos)
-                elif self.point_confirm_return == "skills":
-                    ui.render_skills(game, skill_selected, mouse_pos)
-                elif self.point_confirm_return == "inventory":
-                    ui.render_inventory_gui(game, inventory_selected, mouse_pos, inventory_tab)
-                button_rects = ui.render_rng_result(game, mouse_pos)
-            elif state == "game_over":
-                button_rects = ui.render_game_over(game, mouse_pos, game_over_selected)
+                start_selected = selections["start"]
+                pause_selected = selections["pause"]
+                upgrade_selected = selections["upgrade"]
+                inventory_selected = selections["inventory"]
+                construction_selected = selections["construction"]
+                skill_selected = selections["skill"]
+                settings_selected = selections["settings"]
+                game_over_selected = selections["game_over"]
+                stat_shop_selected = selections["stat_shop"]
+                coin_shop_selected = selections["coin_shop"]
+                character_unlock_selected = selections["character_unlock"]
+                character_upgrade_selected = selections["character_upgrade"]
+                encyclopedia_selected = selections["encyclopedia"]
+                present_virtual_screen(self.virtual_screen)
+                continue
 
-            # Final Smoothscale Render
-            if fw != vw or fh != vh:
-                pygame.transform.smoothscale(self.virtual_screen, (fw, fh), final_screen)
             else:
-                final_screen.blit(self.virtual_screen, (0, 0))
-            pygame.display.flip()
+                selections = {
+                    "start": start_selected,
+                    "pause": pause_selected,
+                    "upgrade": upgrade_selected,
+                    "inventory": inventory_selected,
+                    "construction": construction_selected,
+                    "skill": skill_selected,
+                    "settings": settings_selected,
+                    "settings_slot": settings_slot,
+                    "fusion_confirm": fusion_confirm_selected,
+                    "game_over": game_over_selected,
+                    "stat_shop": stat_shop_selected,
+                    "coin_shop": coin_shop_selected,
+                    "character_unlock": character_unlock_selected,
+                    "character_upgrade": character_upgrade_selected,
+                    "mode": mode_selected,
+                    "multiplayer": multiplayer_selected,
+                    "character": character_selected,
+                    "character_2": character_selected_2,
+                    "character_player": character_select_player,
+                    "encyclopedia": encyclopedia_selected,
+                    "encyclopedia_category": encyclopedia_category,
+                    "encyclopedia_query": encyclopedia_query,
+                }
+                button_rects, selections, inventory_tab = render_state(
+                    self, ui, game, state, mouse_pos, aim_pos, aim_mode, p2_aim_screen, dt,
+                    controls, selections, fullscreen, capture_binding, inventory_tab
+                )
+                start_selected = selections["start"]
+                pause_selected = selections["pause"]
+                upgrade_selected = selections["upgrade"]
+                inventory_selected = selections["inventory"]
+                construction_selected = selections["construction"]
+                skill_selected = selections["skill"]
+                settings_selected = selections["settings"]
+                game_over_selected = selections["game_over"]
+                stat_shop_selected = selections["stat_shop"]
+                coin_shop_selected = selections["coin_shop"]
+                character_unlock_selected = selections["character_unlock"]
+                character_upgrade_selected = selections["character_upgrade"]
+                encyclopedia_selected = selections["encyclopedia"]
+                present_virtual_screen(self.virtual_screen)
 
         pygame.display.quit()
         pygame.joystick.quit()
@@ -1973,3 +2429,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

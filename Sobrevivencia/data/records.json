@@ -1,0 +1,719 @@
+[
+  {
+    "name": "Teste",
+    "score": 793036,
+    "time": 337.9749999999897,
+    "build": "J1 A Vanguarda: guardian_plate Nv10, storm_core Nv10, magnet_orb Nv10, blade_relay Nv10, chrono_boots Nv10; multishot 3, combat_drill 3, field_salvage 1; impact Nv1, impact Nv1, caliber Nv1, caliber Nv1, haste Nv1, caliber Nv1",
+    "details": {
+      "players": [
+        {
+          "player": 1,
+          "class": "vanguard",
+          "class_name": "A Vanguarda",
+          "level": 53,
+          "kills": 1686,
+          "score": 793036,
+          "items": [
+            {
+              "key": "guardian_plate",
+              "name": "Placa Guardia",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "defensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "storm_core",
+              "name": "Nucleo da Tempestade",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "elemental"
+              ],
+              "sources": []
+            },
+            {
+              "key": "magnet_orb",
+              "name": "Orbe Magnetico",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "utilitaria"
+              ],
+              "sources": []
+            },
+            {
+              "key": "blade_relay",
+              "name": "Rele da Lamina",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "ofensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "chrono_boots",
+              "name": "Botas Crono",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "cinetica"
+              ],
+              "sources": []
+            }
+          ],
+          "stamps": {
+            "weapon_1": [
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              }
+            ],
+            "weapon_2": [
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              }
+            ]
+          },
+          "passives": [
+            {
+              "key": "multishot",
+              "title": "Rajada Paralela",
+              "level": 3
+            },
+            {
+              "key": "combat_drill",
+              "title": "Doutrina de Combate",
+              "level": 3
+            },
+            {
+              "key": "field_salvage",
+              "title": "Saque de Campo",
+              "level": 1
+            }
+          ],
+          "synergies": [],
+          "stats": {
+            "max_health": 536.0,
+            "speed": 446.7,
+            "attack_rate": 1.87,
+            "projectile_damage": 40.6,
+            "sword_damage": 92.9,
+            "defense": 57.6,
+            "vampirism": 0.0,
+            "magazine": 42
+          }
+        }
+      ],
+      "time": 337.9749999999897,
+      "kills": 1686,
+      "kill_counts": {
+        "basic": 580,
+        "bulwark": 82,
+        "brute": 145,
+        "runner": 339,
+        "spitter": 22,
+        "chromatic": 4,
+        "necromancer": 42,
+        "sapper": 14,
+        "golem": 13,
+        "lobo_infectado": 184,
+        "morcego_sombra": 214,
+        "miniboss": 4,
+        "phantom": 43
+      },
+      "omni": {
+        "fragments": {
+          "miniboss_3": true,
+          "world_hidden": true,
+          "pocket_hidden": true,
+          "escort_4": false,
+          "quest_5": false,
+          "combat_mark": true,
+          "time_mark": false
+        },
+        "escorts": 0,
+        "quests": 2,
+        "miniboss_kills": 4,
+        "active": false
+      },
+      "score": 793036,
+      "dimension": "pocket"
+    }
+  },
+  {
+    "name": "Amorim",
+    "score": 375305,
+    "time": 289.9510000000019,
+    "build": "J1 A Ceifadora: magnet_orb Nv10, chrono_boots Nv10, blade_relay Nv10, storm_core Nv10, guardian_plate Nv10; blood_mark 2, harvest_heal 2, hemorrhage 1, scarlet_reload 1; impact Nv1",
+    "details": {
+      "players": [
+        {
+          "player": 1,
+          "class": "reaper",
+          "class_name": "A Ceifadora",
+          "level": 37,
+          "kills": 836,
+          "score": 375305,
+          "items": [
+            {
+              "key": "magnet_orb",
+              "name": "Orbe Magnetico",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "utilitaria"
+              ]
+            },
+            {
+              "key": "chrono_boots",
+              "name": "Botas Crono",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "cinetica"
+              ]
+            },
+            {
+              "key": "blade_relay",
+              "name": "Rele da Lamina",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "ofensiva"
+              ]
+            },
+            {
+              "key": "storm_core",
+              "name": "Nucleo da Tempestade",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "elemental"
+              ]
+            },
+            {
+              "key": "guardian_plate",
+              "name": "Placa Guardia",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "defensiva"
+              ]
+            }
+          ],
+          "stamps": {
+            "weapon_1": [
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              }
+            ],
+            "weapon_2": [
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              }
+            ]
+          },
+          "passives": [
+            {
+              "key": "blood_mark",
+              "title": "Marca de Sangue",
+              "level": 2
+            },
+            {
+              "key": "hemorrhage",
+              "title": "Hemorragia Ritual",
+              "level": 1
+            },
+            {
+              "key": "harvest_heal",
+              "title": "Colheita Vital",
+              "level": 2
+            },
+            {
+              "key": "scarlet_reload",
+              "title": "Pacto Escarlate",
+              "level": 1
+            }
+          ],
+          "synergies": []
+        }
+      ],
+      "time": 289.9510000000019,
+      "kills": 836,
+      "score": 375305,
+      "dimension": "main"
+    }
+  },
+  {
+    "name": "Teste Luis",
+    "score": 255478,
+    "time": 174.01799999999932,
+    "build": "J1 A Vanguarda: storm_core Nv4, chrono_boots Nv2, blade_relay Nv6, guardian_plate Nv5, magnet_orb Nv10; ricochet 1, shockwave 1; impact Nv1, impact Nv1, haste Nv1, haste Nv1, calib",
+    "details": {
+      "players": [
+        {
+          "player": 1,
+          "class": "vanguard",
+          "class_name": "A Vanguarda",
+          "level": 29,
+          "kills": 705,
+          "score": 255478,
+          "items": [
+            {
+              "key": "storm_core",
+              "name": "Nucleo da Tempestade",
+              "level": 4,
+              "rank": 1,
+              "tags": [
+                "elemental"
+              ],
+              "sources": []
+            },
+            {
+              "key": "chrono_boots",
+              "name": "Botas Crono",
+              "level": 2,
+              "rank": 1,
+              "tags": [
+                "cinetica"
+              ],
+              "sources": []
+            },
+            {
+              "key": "blade_relay",
+              "name": "Rele da Lamina",
+              "level": 6,
+              "rank": 1,
+              "tags": [
+                "ofensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "guardian_plate",
+              "name": "Placa Guardia",
+              "level": 5,
+              "rank": 1,
+              "tags": [
+                "defensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "magnet_orb",
+              "name": "Orbe Magnetico",
+              "level": 10,
+              "rank": 1,
+              "tags": [
+                "utilitaria"
+              ],
+              "sources": []
+            }
+          ],
+          "stamps": {
+            "weapon_1": [
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              }
+            ],
+            "weapon_2": [
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              }
+            ]
+          },
+          "passives": [
+            {
+              "key": "ricochet",
+              "title": "Balas Ricocheteantes",
+              "level": 1
+            },
+            {
+              "key": "shockwave",
+              "title": "Onda de Impacto",
+              "level": 1
+            }
+          ],
+          "synergies": [],
+          "stats": {
+            "max_health": 344.0,
+            "speed": 393.4,
+            "attack_rate": 1.88,
+            "projectile_damage": 33.2,
+            "sword_damage": 75.7,
+            "defense": 18.9,
+            "vampirism": 0.0,
+            "magazine": 65
+          }
+        }
+      ],
+      "time": 174.01799999999932,
+      "kills": 705,
+      "kill_counts": {
+        "basic": 273,
+        "runner": 152,
+        "spitter": 12,
+        "golem": 6,
+        "necromancer": 15,
+        "brute": 51,
+        "bulwark": 3,
+        "chromatic": 3,
+        "lobo_infectado": 78,
+        "morcego_sombra": 84,
+        "phantom": 25,
+        "sapper": 1,
+        "miniboss": 2
+      },
+      "omni": {
+        "fragments": {
+          "miniboss_3": false,
+          "world_hidden": false,
+          "pocket_hidden": true,
+          "escort_4": false,
+          "quest_5": false,
+          "combat_mark": true,
+          "time_mark": false
+        },
+        "escorts": 0,
+        "quests": 0,
+        "miniboss_kills": 2,
+        "active": false
+      },
+      "score": 255478,
+      "dimension": "pocket"
+    }
+  },
+  {
+    "name": "New",
+    "score": 142653,
+    "time": 132.4840000000034,
+    "build": "J1 A Vanguarda: magnet_orb Nv8, guardian_plate Nv9, storm_core Nv9, chrono_boots Nv7, blade_relay Nv4; combat_drill 1, field_salvage 1, reactor_blast 1; haste Nv1, caliber Nv1, has",
+    "details": {
+      "players": [
+        {
+          "player": 1,
+          "class": "vanguard",
+          "class_name": "A Vanguarda",
+          "level": 21,
+          "kills": 403,
+          "score": 142653,
+          "items": [
+            {
+              "key": "magnet_orb",
+              "name": "Orbe Magnetico",
+              "level": 8,
+              "rank": 1,
+              "tags": [
+                "utilitaria"
+              ],
+              "sources": []
+            },
+            {
+              "key": "guardian_plate",
+              "name": "Placa Guardia",
+              "level": 9,
+              "rank": 1,
+              "tags": [
+                "defensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "storm_core",
+              "name": "Nucleo da Tempestade",
+              "level": 9,
+              "rank": 1,
+              "tags": [
+                "elemental"
+              ],
+              "sources": []
+            },
+            {
+              "key": "chrono_boots",
+              "name": "Botas Crono",
+              "level": 7,
+              "rank": 1,
+              "tags": [
+                "cinetica"
+              ],
+              "sources": []
+            },
+            {
+              "key": "blade_relay",
+              "name": "Rele da Lamina",
+              "level": 4,
+              "rank": 1,
+              "tags": [
+                "ofensiva"
+              ],
+              "sources": []
+            }
+          ],
+          "stamps": {
+            "weapon_1": [
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              },
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              }
+            ],
+            "weapon_2": [
+              {
+                "key": "caliber",
+                "name": "Selo de Calibre Nv1",
+                "level": 1
+              },
+              {
+                "key": "impact",
+                "name": "Selo de Impacto Nv1",
+                "level": 1
+              },
+              {
+                "key": "haste",
+                "name": "Selo de Rapidez Nv1",
+                "level": 1
+              }
+            ]
+          },
+          "passives": [
+            {
+              "key": "combat_drill",
+              "title": "Doutrina de Combate",
+              "level": 1
+            },
+            {
+              "key": "field_salvage",
+              "title": "Saque de Campo",
+              "level": 1
+            },
+            {
+              "key": "reactor_blast",
+              "title": "Reator Crítico",
+              "level": 1
+            }
+          ],
+          "synergies": [],
+          "stats": {
+            "max_health": 280.0,
+            "speed": 459.2,
+            "attack_rate": 1.38,
+            "projectile_damage": 24.7,
+            "sword_damage": 78.1,
+            "defense": 48.3,
+            "vampirism": 0.0,
+            "magazine": 60
+          }
+        }
+      ],
+      "time": 132.4840000000034,
+      "kills": 403,
+      "kill_counts": {
+        "basic": 147,
+        "runner": 78,
+        "golem": 4,
+        "brute": 22,
+        "necromancer": 14,
+        "bulwark": 4,
+        "chromatic": 1,
+        "morcego_sombra": 64,
+        "spitter": 5,
+        "miniboss": 1,
+        "lobo_infectado": 50,
+        "phantom": 13
+      },
+      "omni": {
+        "fragments": {
+          "miniboss_3": false,
+          "world_hidden": true,
+          "pocket_hidden": true,
+          "escort_4": false,
+          "quest_5": false,
+          "combat_mark": true,
+          "time_mark": false
+        },
+        "escorts": 0,
+        "quests": 0,
+        "miniboss_kills": 1,
+        "active": false
+      },
+      "score": 142653,
+      "dimension": "main"
+    }
+  },
+  {
+    "name": "ripardo",
+    "score": 10364,
+    "time": 77.73000000000135,
+    "build": "J1 A Vanguarda: guardian_plate Nv1, chrono_boots Nv1, storm_core Nv1; sem passivas; sem selos",
+    "details": {
+      "players": [
+        {
+          "player": 1,
+          "class": "vanguard",
+          "class_name": "A Vanguarda",
+          "level": 3,
+          "kills": 55,
+          "score": 10364,
+          "items": [
+            {
+              "key": "guardian_plate",
+              "name": "Placa Guardia",
+              "level": 1,
+              "rank": 1,
+              "tags": [
+                "defensiva"
+              ],
+              "sources": []
+            },
+            {
+              "key": "chrono_boots",
+              "name": "Botas Crono",
+              "level": 1,
+              "rank": 1,
+              "tags": [
+                "cinetica"
+              ],
+              "sources": []
+            },
+            {
+              "key": "storm_core",
+              "name": "Nucleo da Tempestade",
+              "level": 1,
+              "rank": 1,
+              "tags": [
+                "elemental"
+              ],
+              "sources": []
+            }
+          ],
+          "stamps": {
+            "weapon_1": [],
+            "weapon_2": []
+          },
+          "passives": [],
+          "synergies": [],
+          "stats": {
+            "max_health": 136.0,
+            "speed": 244.5,
+            "attack_rate": 1.01,
+            "projectile_damage": 20.6,
+            "sword_damage": 58.7,
+            "defense": 2.2,
+            "vampirism": 0.0,
+            "magazine": 0
+          }
+        }
+      ],
+      "time": 77.73000000000135,
+      "kills": 55,
+      "kill_counts": {
+        "basic": 32,
+        "spitter": 1,
+        "runner": 21,
+        "chromatic": 1
+      },
+      "omni": {
+        "fragments": {
+          "miniboss_3": false,
+          "world_hidden": false,
+          "pocket_hidden": false,
+          "escort_4": false,
+          "quest_5": false,
+          "combat_mark": false,
+          "time_mark": false
+        },
+        "escorts": 0,
+        "quests": 0,
+        "miniboss_kills": 0,
+        "active": false
+      },
+      "score": 10364,
+      "dimension": "main"
+    }
+  }
+]

@@ -45,6 +45,17 @@ STATE_WINDOW_ALLOWLIST = {
     "mode_select": {"mode_select_window"},
     "character_select": {"character_select_window"},
     "commands": {"commands_window"},
+    "records": set(),
+    "coin_shop": set(),
+    "character_unlock": set(),
+    "character_unlock_detail": set(),
+    "character_unlock_confirm": set(),
+    "character_upgrades": set(),
+    "character_upgrade_confirm": set(),
+    "record_details": set(),
+    "record_kills": set(),
+    "record_delete_confirm": set(),
+    "record_name": set(),
     "settings": {"settings_window"},
     "encyclopedia": {"encyclopedia_window"},
     "paused": {"pause_window"},
@@ -80,6 +91,7 @@ BUTTON_INTENTS = {
     "muted": ObjectID(class_id="@muted_button"),
     "danger": ObjectID(class_id="@danger_button"),
     "selected": ObjectID(class_id="@selected_panel"),
+    "arcade": ObjectID(class_id="@arcade_badge"),
 }
 
 
@@ -148,9 +160,20 @@ class UIComponentFactory:
             win.close_window_button.kill()
         return win
 
+    def arcade_window(self, title, size, object_id, y=None, close_button=False):
+        return self.window(
+            title,
+            size,
+            ObjectID(class_id="@arcade_window", object_id=object_id),
+            y=y,
+            close_button=close_button,
+        )
+
     def panel(self, rect, container=None, object_id=None):
         if not self.available:
             return None
+        if object_id == "arcade":
+            object_id = ObjectID(class_id="@arcade_panel")
         return UIPanel(
             relative_rect=rect,
             manager=self.manager,
@@ -206,6 +229,10 @@ class UIComponentFactory:
     def button(self, rect, text, container=None, intent="secondary", tooltip=None, object_id=None):
         if not self.available:
             return None
+        text = str(text)
+        max_chars = max(4, int(rect.width / 8))
+        if len(text) > max_chars:
+            text = text[: max(1, max_chars - 3)].rstrip() + "..."
         if object_id is None:
             object_id = BUTTON_INTENTS.get(intent)
         return UIButton(

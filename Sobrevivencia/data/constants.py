@@ -6,6 +6,9 @@ SCREEN_WIDTH = 1100
 SCREEN_HEIGHT = 720
 FPS = 60
 
+PIXEL_ART_MODE = True
+PIXEL_ART_DOWNSCALE = 2
+
 WORLD_TILE_SIZE = 96
 CHUNK_SIZE = 768
 VIEW_PADDING = 180
@@ -55,10 +58,11 @@ SKILL_UPGRADE_COST = 3
 SKILL_UNLOCK_COST = 5
 SPECIAL_SKILL_UPGRADE_COST = 6
 SPECIAL_SKILL_UNLOCK_COST = 8
-STAT_SHOP_UNLOCK_LEVEL = 20
+STAT_SHOP_UNLOCK_LEVEL = 1
 STAT_SHOP_ROLL_COST = 1
 STAT_SHOP_REROLL_COST = 1
 FUSION_COST = 3
+STAMP_RESERVE_LIMIT = 60
 
 STAT_SHOP_STATS = [
     {
@@ -154,13 +158,26 @@ MINIBOSS_LEAP_RADIUS = 128
 MINIBOSS_LEAP_DAMAGE = 48
 MINIBOSS_LASER_WARNING = 0.85
 MINIBOSS_LASER_RANGE = 760
-MINIBOSS_LASER_WIDTH = 54
-MINIBOSS_LASER_DAMAGE = 38
+MINIBOSS_LASER_WIDTH = 46
+MINIBOSS_LASER_DAMAGE = 28
 MINIBOSS_SUMMON_DURATION = 2.0
 MINIBOSS_SUMMON_COUNT_MIN = 3
 MINIBOSS_SUMMON_COUNT_MAX = 5
 MINIBOSS_SUMMON_COOLDOWN_MIN = 18.0
 MINIBOSS_SUMMON_COOLDOWN_MAX = 28.0
+HARBINGER_SPAWN_INTERVAL = 30 * 60.0
+REAPER_SPAWN_INTERVAL = 60 * 60.0
+REAPER_MIN_SPAWN_TIME = 30 * 60.0
+REAPER_STALL_RADIUS = 520.0
+REAPER_STALL_GRACE = 95.0
+REAPER_STALL_ACCEL_MAX = 1.45
+REAPER_AURA_RADIUS = 250
+REAPER_AURA_DPS = 11.0
+REAPER_BLINK_WARNING = 0.65
+REAPER_DOOM_WARNING = 0.82
+REAPER_DASH_WARNING = 0.34
+REAPER_DASH_RANGE = 560
+REAPER_DOOM_RADIUS = 190
 
 MINE_TRIGGER_RADIUS = 28
 MINE_EXPLOSION_RADIUS = 145
@@ -174,6 +191,15 @@ SPAWN_MIN_DELAY = 0.23
 SPAWN_DISTANCE_MIN = 560
 SPAWN_DISTANCE_MAX = 760
 CONTACT_DAMAGE_PER_SECOND = 17.0
+
+# Balanceamento dinamico de fim de partida
+POWER_SCORE_WEIGHT = 0.95
+DIRECTOR_PRESSURE_INTERVAL = 8.0
+DIRECTOR_TARGET_KILLS_PER_MIN = 72.0
+DIRECTOR_TARGET_DAMAGE_PER_MIN = 22.0
+DIRECTOR_MAX_PRESSURE = 1.0
+LATE_GAME_START_TIME = 12 * 60.0
+ELITE_TIER_START_TIME = 7 * 60.0
 
 CAMERA_SMOOTHING = 9.5
 SCREEN_SHAKE_DECAY = 5.5
@@ -189,53 +215,53 @@ REVIVE_RADIUS = 80
 REVIVE_TIME = 4.0
 REVIVE_HP_PERCENT = 0.5
 P1_AIM_COLOR = "#38BDF8"
-P2_AIM_COLOR = "#F87171"
+P2_AIM_COLOR = "#FF3B58"
 
 COLORS = {
-    "bg": "#07111E",
-    "panel": "#101927",
-    "panel_2": "#172033",
-    "text": "#F8FAFC",
-    "muted": "#94A3B8",
-    "muted_2": "#64748B",
-    "health": "#EF4444",
-    "health_bg": "#44151B",
-    "special": "#38BDF8",
-    "xp": "#22C55E",
-    "coin": "#FACC15",
-    "player": "#E2E8F0",
-    "player_core": "#38BDF8",
-    "projectile": "#67E8F9",
-    "projectile_freeze": "#BAE6FD",
-    "poison": "#86EFAC",
-    "sword": "#FDE68A",
-    "shield": "#60A5FA",
-    "danger": "#FB7185",
-    "upgrade": "#A78BFA",
+    "bg": "#05050A",
+    "panel": "#111827",
+    "panel_2": "#1B2440",
+    "text": "#FFF7D6",
+    "muted": "#A7B0C7",
+    "muted_2": "#5E6A86",
+    "health": "#FF3B58",
+    "health_bg": "#39111B",
+    "special": "#28D7FF",
+    "xp": "#35F06B",
+    "coin": "#FFD447",
+    "player": "#FFF7D6",
+    "player_core": "#28D7FF",
+    "projectile": "#7DF9FF",
+    "projectile_freeze": "#A6F3FF",
+    "poison": "#8BFF4A",
+    "sword": "#FFE66D",
+    "shield": "#4F8CFF",
+    "danger": "#FF5C7A",
+    "upgrade": "#D96CFF",
 }
 
 TERRAIN_TYPES = {
     "grass": {
-        "color": "#173B2A",
-        "accent": "#1F5138",
+        "color": "#12351F",
+        "accent": "#1B6B36",
         "speed": 1.0,
         "name": "Grama",
     },
     "sand": {
-        "color": "#786C3A",
-        "accent": "#9A8849",
+        "color": "#6B5A2A",
+        "accent": "#C39B3B",
         "speed": 0.55,
         "name": "Areia",
     },
     "mud": {
-        "color": "#46372B",
-        "accent": "#5C4938",
+        "color": "#352235",
+        "accent": "#66415D",
         "speed": 0.76,
         "name": "Lama",
     },
     "stone": {
-        "color": "#293241",
-        "accent": "#384558",
+        "color": "#20233F",
+        "accent": "#414A78",
         "speed": 0.92,
         "name": "Pedra",
     },
@@ -396,7 +422,60 @@ ENEMY_TYPES = {
         "special": 14,
         "coin_chance": 0.18,
     },
+    "harbinger": {
+        "name": "Arauto do Fim",
+        "radius": 34,
+        "speed": 172.0,
+        "health": 5200,
+        "damage": 58.0,
+        "xp": 520,
+        "color": "#DC2626",
+        "special": 100,
+        "coin_chance": 1.0,
+    },
+    "reaper": {
+        "name": "Ceifador da Margem",
+        "radius": 42,
+        "speed": 228.0,
+        "health": 7600,
+        "damage": 72.0,
+        "xp": 760,
+        "color": "#111827",
+        "special": 140,
+        "coin_chance": 1.0,
+    },
+    "god": {
+        "name": "GOD",
+        "radius": 50,
+        "speed": 300.0,
+        "health": 99999,
+        "damage": 150.0,
+        "xp": 9999,
+        "color": "#FFD700",
+        "special": 999,
+        "coin_chance": 1.0,
+    },
 }
+
+CHALICE_FRAGMENTS = [
+    {"key": "miniboss_3", "label": "III", "name": "Nucleo do Colosso"},
+    {"key": "world_hidden", "label": "MAP", "name": "Fragmento Perdido"},
+    {"key": "pocket_hidden", "label": "DIM", "name": "Fragmento do Vazio"},
+    {"key": "escort_4", "label": "ESC", "name": "Juramento de Escolta"},
+    {"key": "quest_5", "label": "OBJ", "name": "Selo de Objetivos"},
+    {"key": "combat_mark", "label": "K", "name": "Memoria de Combate"},
+    {"key": "time_mark", "label": "T", "name": "Ampulheta Singular"},
+]
+
+CHALICE_KILL_TARGET = 650
+CHALICE_COMBO_TARGET = 80
+CHALICE_TIME_TARGET = 20 * 60.0
+OMNI_ORBITAL_COOLDOWN = 9.0
+OMNI_TIME_FREEZE_COOLDOWN = 55.0
+OMNI_TIME_FREEZE_DURATION = 4.5
+OMNI_TIME_FREEZE_ENEMY_MULTIPLIER = 0.12
+ROBOTIC_NECROMANCY_UNLOCK_LEVEL = 8
+ROBOTIC_NECROMANCY_UNLOCK_OTHER_SKILL_LEVELS = 5
 
 UPGRADES = {
     "speed": {
@@ -456,7 +535,7 @@ CHARACTERS = {
         "specials": {
             "weapon_1": "Explosão Radial",
             "weapon_2": "Carga Titânica",
-            "combo": "Protocolo Cerco",
+            "combo": "Bastiao de Ruptura",
         },
         "passives": {
             "ricochet": {
@@ -532,7 +611,7 @@ CHARACTERS = {
         "specials": {
             "weapon_1": "Chuva de Flechas",
             "weapon_2": "Dança das Adagas",
-            "combo": "Tempestade Predatória",
+            "combo": "Eclipse da Predadora",
         },
         "passives": {
             "explosive": {
@@ -604,11 +683,11 @@ CHARACTERS = {
         "shape": "circle_square",
         "weapon_1": "Canhão de Plasma",
         "weapon_2": "Chave Magnética",
-        "special": "Torreta Sentinela",
+        "special": "Grade de Torretas",
         "specials": {
-            "weapon_1": "Torreta Sentinela",
-            "weapon_2": "Barreira de Choque",
-            "combo": "Protocolo Ragnarok",
+            "weapon_1": "Grade de Torretas",
+            "weapon_2": "Singularidade Magnetica",
+            "combo": "Fabrica Ragnarok",
         },
         "passives": {
             "plasma_aoe": {
@@ -647,11 +726,11 @@ CHARACTERS = {
                 "category": "Especial",
                 "description": "Barreiras causam mais dano ao colidir.",
             },
-            "tech_scavenger": {
-                "title": "Reciclagem",
-                "short": "REC",
+            "robotic_necromancy": {
+                "title": "Necromancia Robotica",
+                "short": "NEC",
                 "category": "Ambas",
-                "description": "Abates rendem mais moedas e munição.",
+                "description": "Abates podem converter inimigos em aliados roboticos temporarios. Exige progressao para ser destravada.",
             },
             "overclock": {
                 "title": "Overclock",
@@ -670,6 +749,82 @@ CHARACTERS = {
                 "short": "FUS",
                 "category": "Ultimate",
                 "description": "Ragnarok incendeia o chão deixando plasma.",
+            },
+        }
+    },
+    "reaper": {
+        "name": "A Ceifadora",
+        "color": "#0B0B0F",
+        "core_color": "#DC2626",
+        "shape": "circle_diamond",
+        "weapon_1": "Lamentos",
+        "weapon_2": "Foice Carmesim",
+        "special": "Rosario de Dor",
+        "specials": {
+            "weapon_1": "Rosario de Dor",
+            "weapon_2": "Colheita Rubra",
+            "combo": "Noite da Degola",
+        },
+        "passives": {
+            "blood_mark": {
+                "title": "Marca de Sangue",
+                "short": "MDS",
+                "category": "Distancia",
+                "description": "Lamentos marcam alvos e ampliam a janela de execucao da Foice.",
+            },
+            "mourning_pierce": {
+                "title": "Costura Funebre",
+                "short": "COS",
+                "category": "Distancia",
+                "description": "Agulhas ganham perfuracao e causam mais dano contra alvos marcados.",
+            },
+            "funeral_volley": {
+                "title": "Rajada Velada",
+                "short": "RAJ",
+                "category": "Distancia",
+                "description": "Aumenta a quantidade de agulhas por salva e prolonga as marcas.",
+            },
+            "funeral_chain": {
+                "title": "Corrente Funebre",
+                "short": "COR",
+                "category": "Distancia",
+                "description": "Abates em alvos marcados espalham a maldicao para inimigos proximos.",
+            },
+            "reaping_arc": {
+                "title": "Arco Ceifador",
+                "short": "ARC",
+                "category": "Corpo a corpo",
+                "description": "A Foice ganha arco e alcance, facilitando colher grupos inteiros.",
+            },
+            "hemorrhage": {
+                "title": "Hemorragia Ritual",
+                "short": "HEM",
+                "category": "Corpo a corpo",
+                "description": "Golpes da Foice aplicam sangramento escalavel.",
+            },
+            "soul_tithe": {
+                "title": "Dizimo de Almas",
+                "short": "DIZ",
+                "category": "Corpo a corpo",
+                "description": "Consumir marcas no melee gera carga adicional de especial.",
+            },
+            "harvest_heal": {
+                "title": "Colheita Vital",
+                "short": "COL",
+                "category": "Ambas",
+                "description": "Abates em alvos marcados curam a Ceifadora.",
+            },
+            "scarlet_reload": {
+                "title": "Pacto Escarlate",
+                "short": "PAC",
+                "category": "Ambas",
+                "description": "Abates marcados devolvem municao direto ao pente.",
+            },
+            "red_eclipse": {
+                "title": "Eclipse Rubro",
+                "short": "ECL",
+                "category": "Especial",
+                "description": "Fortalece Rosario, Colheita e a ultimate com area e dano extras.",
             },
         }
     }
@@ -745,7 +900,7 @@ PAUSE_OPTIONS = [
     ("Continuar", "resume"),
     ("Inventario", "inventory"),
     ("Gerenciamento de Skills", "skills"),
-    ("Loja de Status", "stat_shop"),
+    ("Progressao", "progression"),
     ("Construcoes", "constructions"),
     ("Enciclopedia", "encyclopedia"),
     ("Comandos", "commands"),
@@ -759,6 +914,8 @@ PAUSE_OPTIONS = [
 
 START_OPTIONS = [
     ("Iniciar Jogo", "character_select"),
+    ("Records", "records"),
+    ("Loja de moedas", "coin_shop"),
     ("Enciclopedia", "encyclopedia"),
     ("Comandos", "commands"),
     ("Configuracoes", "settings"),
@@ -773,11 +930,11 @@ CONTROL_ACTIONS = [
     ("move_right", "Mover para direita"),
     ("dash", "Dash"),
     ("special", "Especial"),
-    ("combo_special", "Suprema (segure)"),
+    ("combo_special", "Ultimate"),
+    ("omni_active", "Omni-Kernel"),
     ("toggle_weapon", "Alternar arma"),
     ("inventory", "Inventario"),
     ("skills", "Skills"),
-    ("stat_shop", "Loja de Status"),
     ("pause", "Pausar"),
     ("settings", "Configuracoes"),
     ("fullscreen", "Tela cheia"),
@@ -796,10 +953,10 @@ DEFAULT_BINDINGS = {
     "dash": [("key", pygame.K_SPACE), None, None],
     "special": [("key", pygame.K_e), None, None],
     "combo_special": [("key", pygame.K_r), None, None],
+    "omni_active": [("key", pygame.K_h), None, None],
     "toggle_weapon": [("key", pygame.K_q), ("key", pygame.K_LSHIFT), None],
     "inventory": [("key", pygame.K_i), ("key", pygame.K_TAB), None],
     "skills": [("key", pygame.K_k), None, None],
-    "stat_shop": [("key", pygame.K_l), None, None],
     "pause": [("key", pygame.K_ESCAPE), None, None],
     "settings": [("key", pygame.K_o), None, None],
     "fullscreen": [("key", pygame.K_F11), None, None],
@@ -815,10 +972,10 @@ JOYSTICK_DEFAULT_BINDINGS = {
     "dash": ("joy_button", 0),
     "special": ("joy_button", 2),
     "combo_special": ("joy_button", 3),
+    "omni_active": ("joy_button", 10),
     "toggle_weapon": ("joy_button", 1),
     "inventory": ("joy_button", 6),
     "skills": ("joy_button", 5),
-    "stat_shop": ("joy_button", 4),
     "pause": ("joy_button", 7),
     "place_light": ("joy_button", 8),
 }
@@ -836,5 +993,3 @@ else:
 
 apply_overrides(globals(), load_settings(), {"SCREEN_WIDTH", "SCREEN_HEIGHT", "FPS"})
 apply_overrides(globals(), load_balance())
-
-

@@ -1,0 +1,41 @@
+{
+  "coins": 361,
+  "unlocked_characters": [
+    "vanguard",
+    "huntress"
+  ],
+  "character_upgrades": {
+    "max_health": {
+      "purchased_level": 3,
+      "active_level": 3
+    },
+    "defense": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "speed": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "attack_rate": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "damage": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "vampirism": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "magazine": {
+      "purchased_level": 1,
+      "active_level": 1
+    },
+    "ammo_reserve": {
+      "purchased_level": 1,
+      "active_level": 1
+    }
+  }
+}

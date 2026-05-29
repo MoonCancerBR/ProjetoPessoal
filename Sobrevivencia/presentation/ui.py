@@ -134,11 +134,12 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
         # Escala dinamica: base 1100x720, ajusta fontes pela menor dimensao.
         ui_scale = max(0.85, min(1.25, min(SCREEN_WIDTH / 1100.0, SCREEN_HEIGHT / 720.0)))
         self.assets = AssetRegistry(ui_scale=ui_scale)
-        self.font_big = self.assets.font("Segoe UI", 42, bold=True)
-        self.font_title = self.assets.font("Segoe UI", 26, bold=True)
-        self.font = self.assets.font("Segoe UI", 18)
-        self.font_small = self.assets.font("Segoe UI", 16)
-        self.font_tiny = self.assets.font("Segoe UI", 13)
+        arcade_font = "Consolas" if PIXEL_ART_MODE else "Segoe UI"
+        self.font_big = self.assets.font(arcade_font, 42, bold=True)
+        self.font_title = self.assets.font(arcade_font, 26, bold=True)
+        self.font = self.assets.font(arcade_font, 18)
+        self.font_small = self.assets.font(arcade_font, 16)
+        self.font_tiny = self.assets.font(arcade_font, 13)
         self.effect_cache = EffectSurfaceCache()
         self.animation_manager = AnimationManager()
         self.particle_manager = ParticleManager()
@@ -200,7 +201,7 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
 
         target_scroll = item_top - max(8, (visible_height - item_height) // 2)
         target_scroll = max(0, min(target_scroll, max_scroll))
-        scroll_bar.set_scroll_from_start_percentage(target_scroll / max(1, content_height))
+        scroll_bar.set_scroll_from_start_percentage(target_scroll / max(1, max_scroll))
 
     def screen_to_world(self, screen_pos, camera):
         return Vector2(screen_pos[0] + camera.x, screen_pos[1] + camera.y)
@@ -247,6 +248,29 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
     def _draw_star(self, center, outer, inner, color, points=5, angle_offset=-math.pi / 2):
         draw_star(self.screen, center, outer, inner, color, points=points, angle_offset=angle_offset)
 
+    def _pixelate_world_surface(self):
+        if not PIXEL_ART_MODE:
+            return
+
+        factor = max(1, int(PIXEL_ART_DOWNSCALE))
+        low_size = (max(1, SCREEN_WIDTH // factor), max(1, SCREEN_HEIGHT // factor))
+        low_res = pygame.transform.scale(self.screen, low_size)
+        self.screen.blit(pygame.transform.scale(low_res, (SCREEN_WIDTH, SCREEN_HEIGHT)), (0, 0))
+
+    def _apply_arcade_scanlines(self, surface):
+        if not PIXEL_ART_MODE:
+            return surface
+        scanlines = getattr(self, "_pixel_scanline_overlay", None)
+        if scanlines is None:
+            scanlines = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            for y in range(1, SCREEN_HEIGHT, 4):
+                pygame.draw.rect(scanlines, (0, 0, 0, 16), (0, y, SCREEN_WIDTH, 1))
+            for x in range(0, SCREEN_WIDTH, 16):
+                pygame.draw.line(scanlines, (255, 255, 255, 5), (x, 0), (x, SCREEN_HEIGHT))
+            self._pixel_scanline_overlay = scanlines
+        surface.blit(scanlines, (0, 0))
+        return surface
+
     def _collect_light_sources(self, game, camera):
         lights = []
         
@@ -256,7 +280,7 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                 px, py = self.world_to_screen(p.pos, camera)
                 # Aura Luminosa do Sobrevivente (Fase 2)
                 # Outer radius: 180, inner radius: 80.
-                lights.append((px, py, 180.0, 1.0, 1.0, 1.0, 0.9))
+                lights.append((px, py, 340.0, 1.0, 1.0, 0.98, 0.78))
 
         # 2. Constructs (turrets, barriers, torches)
         time_val = game.time_alive
@@ -264,11 +288,21 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
             cx, cy = self.world_to_screen(c.pos, camera)
             if c.kind == "torch":
                 glow_pulse = 1.0 + 0.08 * math.sin(time_val * 15.0 + math.cos(time_val * 6.0))
-                lights.append((cx, cy, 160.0 * glow_pulse, 1.0, 0.98, 0.57, 0.23))
+                lights.append((cx, cy, 230.0 * glow_pulse, 1.0, 0.98, 0.68, 0.28))
             elif c.kind == "turret":
                 lights.append((cx, cy, 90.0, 1.0, 0.98, 0.75, 0.14))
             elif c.kind == "barrier":
                 lights.append((cx, cy, 70.0, 1.0, 0.22, 0.74, 0.97))
+            elif c.kind == "robo_minion":
+                lights.append((cx, cy, 78.0, 1.0, 0.98, 0.86, 0.28))
+
+        if getattr(game, "light_level", 1.0) < 0.35:
+            for light in getattr(game.world, "iter_visible_static_lights", lambda *args: [])(camera.x, camera.y, SCREEN_WIDTH, SCREEN_HEIGHT):
+                lx, ly = self.world_to_screen(light.pos, camera)
+                if light.kind == "lamp":
+                    lights.append((lx, ly, light.radius, 1.0, 0.98, 0.76, 0.25))
+                else:
+                    lights.append((lx, ly, light.radius, 1.0, 0.34, 0.83, 0.98))
 
         # 3. Fire Hazards
         focus = camera + Vector2(SCREEN_WIDTH * 0.5, SCREEN_HEIGHT * 0.5)
@@ -287,24 +321,32 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
         # 5. Projectiles
         for proj in getattr(game, "projectiles", []):
             px, py = self.world_to_screen(proj.pos, camera)
-            owner = getattr(proj, "owner", 0)
-            p_obj = game.get_player(owner)
-            if p_obj and getattr(p_obj, "char_class", "") == "cryogenic":
-                color = (0.73, 0.9, 0.99)
-            elif p_obj and getattr(p_obj, "char_class", "") == "vanguard":
-                color = (0.98, 0.57, 0.23)
+            if getattr(proj, "color", ""):
+                rgb = hex_color(proj.color)
+                color = tuple(channel / 255.0 for channel in rgb)
             else:
-                color = (0.99, 0.94, 0.54)
-            lights.append((px, py, proj.radius + 10.0, 0.9, *color))
+                owner = getattr(proj, "owner", 0)
+                p_obj = game.get_player(owner)
+                if p_obj and getattr(p_obj, "char_class", "") == "cryogenic":
+                    color = (0.73, 0.9, 0.99)
+                elif p_obj and getattr(p_obj, "char_class", "") == "vanguard":
+                    color = (0.98, 0.57, 0.23)
+                else:
+                    color = (0.99, 0.94, 0.54)
+            lights.append((px, py, max(28.0, proj.radius + 18.0), 1.0, *color))
 
         # 6. Drops
         for drop in getattr(game, "drops", []):
             dx, dy = self.world_to_screen(drop.pos, camera)
             if getattr(drop, "kind", "") == "coin":
                 color = (0.99, 0.88, 0.28)
+            elif getattr(drop, "kind", "") == "item_box":
+                color = (0.16, 0.84, 1.0)
+            elif getattr(drop, "kind", "") == "stamp":
+                color = (0.86, 0.42, 1.0)
             else:
                 color = (0.75, 0.52, 0.99)
-            lights.append((dx, dy, 25.0, 1.0, *color))
+            lights.append((dx, dy, 42.0, 1.0, *color))
 
         return lights
 
@@ -409,6 +451,8 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                 pygame.draw.circle(self.screen, (34, 211, 238), (dx, dy), 5)
                 pygame.draw.circle(self.screen, (255, 255, 255), (dx, dy), 2)
 
+        self._pixelate_world_surface()
+        self._draw_altar_labels(game, camera)
         self._draw_floaters(game, camera)
         self._draw_hud(game)
         self._draw_minimap(game)
@@ -436,16 +480,55 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
             pulse_alpha = int(170 + 60 * math.sin(game.time_alive * 7.0))
             font_title = self.font_title
             if font_title:
-                txt = f"--- DIMENSAO DE BOLSO: {max(0.0, game.pocket_dimension_timer):.1f}s ---"
+                if game.pocket_dimension_timer > 90000.0:
+                    txt = "--- DERROTE O ARAUTO SOMBRIO ---"
+                else:
+                    txt = f"--- DIMENSAO DE BOLSO: {max(0.0, game.pocket_dimension_timer):.1f}s ---"
                 font_title.render_to(vignette, (SCREEN_WIDTH // 2 - font_title.get_rect(txt, size=18).width // 2, 25), txt, (192, 132, 252, pulse_alpha), size=18)
             self.screen.blit(vignette, (0, 0))
 
+        # Draw Olympus Dimension vignette and distortion warnings
+        if getattr(game, "current_dimension", "main") == "olympus":
+            vignette = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            # Golden divine border glow
+            pygame.draw.rect(vignette, (218, 165, 32, 50), (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 70)
+            pygame.draw.rect(vignette, (255, 215, 0, 30), (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 35)
+
+            pulse_alpha = int(170 + 60 * math.sin(game.time_alive * 5.0))
+            font_title = self.font_title
+            if font_title:
+                txt = "--- OLIMPO: ENFRENTE O DEUS ---"
+                font_title.render_to(vignette, (SCREEN_WIDTH // 2 - font_title.get_rect(txt, size=18).width // 2, 25), txt, (255, 215, 0, pulse_alpha), size=18)
+
+            # Distortion warning text
+            distortion = getattr(game, "olympus_distortion_type", "")
+            if distortion:
+                warn_pulse = int(200 + 55 * math.sin(game.time_alive * 12.0))
+                distortion_labels = {
+                    "invert_mouse": "⚡ MOUSE INVERTIDO ⚡",
+                    "invert_keyboard": "⚡ TECLADO INVERTIDO ⚡",
+                    "flip_screen": "⚡ TELA INVERTIDA ⚡",
+                }
+                warn_txt = distortion_labels.get(distortion, "⚡ DISTORCAO DIVINA ⚡")
+                if font_title:
+                    w = font_title.get_rect(warn_txt, size=22).width
+                    font_title.render_to(vignette, (SCREEN_WIDTH // 2 - w // 2, SCREEN_HEIGHT // 2 - 40), warn_txt, (255, 69, 0, warn_pulse), size=22)
+                # Red flash overlay for distortion
+                pygame.draw.rect(vignette, (255, 0, 0, 18), (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+
+            self.screen.blit(vignette, (0, 0))
+
+        surf_to_draw = self.game_surface
+        if getattr(game, "olympus_distortion_type", "") == "flip_screen":
+            surf_to_draw = pygame.transform.flip(surf_to_draw, False, True)
+            
         if draw_gui:
-            self.gui_manager.draw_ui(self.screen)
+            self.gui_manager.draw_ui(surf_to_draw)
+        surf_to_draw = self._apply_arcade_scanlines(surf_to_draw)
         # Present via ModernGL if available, otherwise CPU blit
         if self.ctx:
             try:
-                texture_data = pygame.image.tostring(self.game_surface, 'RGBA', False)
+                texture_data = pygame.image.tostring(surf_to_draw, 'RGBA', False)
                 self.tex.write(texture_data)
                 self.ctx.viewport = (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
                 self.ctx.clear(0.0, 0.0, 0.0)
@@ -481,9 +564,9 @@ class UI(WorldRendererMixin, EntityRendererMixin, HudMenu, InventoryGUI, Invento
                 self.vao.render(moderngl.TRIANGLES)
             except Exception as e:
                 logger.error(f"Erro ModernGL: {e}")
-                self.screen_original.blit(self.game_surface, (0, 0))
+                self.screen_original.blit(surf_to_draw, (0, 0))
         else:
-            self.screen_original.blit(self.game_surface, (0, 0))
+            self.screen_original.blit(surf_to_draw, (0, 0))
         if flip:
             pygame.display.flip()
 

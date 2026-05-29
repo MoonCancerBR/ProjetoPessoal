@@ -4,6 +4,7 @@ import pygame
 
 from ...config.runtime import TweeningFallback, optional_import
 from ...data.constants import *
+from .. import arcade_theme
 from ..ui_utils import hex_color
 
 pytweening = optional_import("pytweening") or TweeningFallback
@@ -29,8 +30,10 @@ class FeedbackRendererMixin:
                 pad_x, pad_y = 10, 5
                 bg = pygame.Surface((rect.width + pad_x * 2, rect.height + pad_y * 2), pygame.SRCALPHA)
                 bg_alpha = min(180, alpha)
-                pygame.draw.rect(bg, (10, 5, 5, bg_alpha), bg.get_rect(), border_radius=6)
-                pygame.draw.rect(bg, (*color, bg_alpha), bg.get_rect(), width=1, border_radius=6)
+                pygame.draw.rect(bg, (5, 5, 10, bg_alpha), bg.get_rect())
+                pygame.draw.rect(bg, (*color, bg_alpha), bg.get_rect(), width=2)
+                pygame.draw.rect(bg, (255, 255, 255, min(70, bg_alpha)), (6, 5, min(28, bg.get_width() - 12), 2))
+                arcade_theme.draw_scanline_overlay(bg, alpha=12)
                 bx = x - rect.width // 2 - pad_x
                 by = int(y - 28 - eased_offset) - pad_y
                 self.screen.blit(bg, (bx, by))

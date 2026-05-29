@@ -42,6 +42,11 @@ no Player via campos `item_*_bonus` para que o HUD possa exibir os totais corret
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+try:
+    from ..equipment_fusion_effects import apply_passive_hooks
+except ImportError:
+    from Sobrevivencia.core.equipment_fusion_effects import apply_passive_hooks
+
 if TYPE_CHECKING:
     from ..entities import Player
     from ...data.items import Inventory
@@ -154,8 +159,7 @@ def recalc_item_buffs(player: "Player", inventory: "Inventory") -> None:
         # --- Bônus de Hybrid: sinergia geral ---
         if item.is_hybrid:
             # Hybrids dão pequeno bônus de dano e rate universais além de seus efeitos base
-            player.item_damage_bonus      += 0.008 * item.level * scale
-            player.item_attack_rate_bonus += 0.008 * item.level * scale
+            apply_passive_hooks(player, item, scale)
 
         # --- Bônus de Relic: sinergia maior ---
         if item.is_relic:
@@ -196,4 +200,3 @@ def ensure_item_bonus_fields(player: "Player") -> None:
         player.item_guardian_reduction = 0.0
     if not hasattr(player, "item_magnet_bonus"):
         player.item_magnet_bonus      = 0.0
-

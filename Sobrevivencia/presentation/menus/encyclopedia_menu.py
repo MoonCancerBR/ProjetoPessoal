@@ -85,12 +85,11 @@ class EncyclopediaMenu:
         self.encyclopedia_buttons = {}
         self.encyclopedia_topic_buttons = {}
         self.encyclopedia_category_buttons = {}
-        self.encyclopedia_window = c.window(
+        self.encyclopedia_window = c.arcade_window(
             "ENCICLOPEDIA",
             (1020, 640),
             "#encyclopedia_window",
             y=40,
-            close_button=False,
         )
         if self.encyclopedia_window is None:
             return

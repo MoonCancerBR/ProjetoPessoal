@@ -29,6 +29,7 @@ def main(argv=None):
     import pygame
     from pygame.math import Vector2
 
+    from Sobrevivencia.core.entities import Altar
     from Sobrevivencia.core.game_logic import GameLogic
     from Sobrevivencia.data.constants import PAUSE_OPTIONS, SCREEN_HEIGHT, SCREEN_WIDTH
     from Sobrevivencia.presentation.ui import UI
@@ -52,6 +53,19 @@ def main(argv=None):
     ui.render_game(game, mouse_pos, dt=1 / 60, flip=False)
     _save(ui.screen, output_dir, "gameplay")
 
+    night_game = GameLogic()
+    night_game.day_night_timer = 82.0
+    night_game.light_level = 0.0
+    night_game.altars = [
+        Altar(pos=night_game.player.pos + Vector2(160, -80), kind="weapon_altar"),
+        Altar(pos=night_game.player.pos + Vector2(260, 90), kind="skill_altar"),
+        Altar(pos=night_game.player.pos + Vector2(-220, 80), kind="stamps_altar"),
+    ]
+    night_game.update(1 / 60, Vector2(0, 0), night_game.player.pos + Vector2(120, 0))
+    ui.sync_menu_windows("playing")
+    ui.render_game(night_game, mouse_pos, dt=1 / 60, flip=False)
+    _save(ui.screen, output_dir, "gameplay_night_altars")
+
     ui.sync_menu_windows("paused")
     ui.render_pause(game, PAUSE_OPTIONS, 0, mouse_pos)
     _save(ui.screen, output_dir, "pause")
@@ -68,6 +82,25 @@ def main(argv=None):
     game.menu_player_index = 0
     ui.render_inventory_gui(game, 0, mouse_pos, "items")
     _save(ui.screen, output_dir, "inventory")
+
+    ui.sync_menu_windows("skills")
+    game.active_altar = Altar(pos=game.player.pos, kind="skill_altar")
+    ui.render_skills(game, 0, mouse_pos)
+    _save(ui.screen, output_dir, "skills")
+    game.active_altar = None
+
+    ui.sync_menu_windows("stat_shop")
+    game.stat_shop_offers = [game._generate_stat_offer() for _ in range(3)]
+    ui.render_stat_shop(game, 0, mouse_pos)
+    _save(ui.screen, output_dir, "stat_shop")
+
+    ui.sync_menu_windows("mode_select")
+    ui.render_mode_select(mouse_pos, selected=0, joystick_count=1)
+    _save(ui.screen, output_dir, "mode_select")
+
+    ui.sync_menu_windows("character_select")
+    ui.render_character_select("vanguard", mouse_pos)
+    _save(ui.screen, output_dir, "character_select")
 
     pygame.quit()
     return 0

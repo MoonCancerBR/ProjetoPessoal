@@ -3,154 +3,63 @@ import random
 import math
 if __package__:
     from ...data.constants import *
+    from ..inimigos.elites.arauto.ai import harbinger_velocity
+    from ..inimigos.elites.ceifador.ai import apply_reaper_presence, reaper_velocity, start_reaper_blink, start_reaper_dash, start_reaper_doom
+    from ..inimigos.elites.miniboss.ai import miniboss_velocity, start_miniboss_charge, start_miniboss_laser, start_miniboss_leap, start_miniboss_shockwave, start_miniboss_summon
+    from ..inimigos.scaling import active_spitter_cap, apply_enemy_tier, choose_enemy_tier, enemy_difficulty_rating, enemy_spawn_scales, highest_player_level, player_power_rating, player_power_rating_for
+    from ..inimigos.spawning import spawn_enemies, spawn_one_enemy, spawn_special_enemy, update_reaper_spawn_pressure, update_special_spawns, weighted_enemy_kind
     from ..entities import Enemy, Hazard
 else:
     from Sobrevivencia.data.constants import *
+    from Sobrevivencia.core.inimigos.elites.arauto.ai import harbinger_velocity
+    from Sobrevivencia.core.inimigos.elites.ceifador.ai import apply_reaper_presence, reaper_velocity, start_reaper_blink, start_reaper_dash, start_reaper_doom
+    from Sobrevivencia.core.inimigos.elites.miniboss.ai import miniboss_velocity, start_miniboss_charge, start_miniboss_laser, start_miniboss_leap, start_miniboss_shockwave, start_miniboss_summon
+    from Sobrevivencia.core.inimigos.scaling import active_spitter_cap, apply_enemy_tier, choose_enemy_tier, enemy_difficulty_rating, enemy_spawn_scales, highest_player_level, player_power_rating, player_power_rating_for
+    from Sobrevivencia.core.inimigos.spawning import spawn_enemies, spawn_one_enemy, spawn_special_enemy, update_reaper_spawn_pressure, update_special_spawns, weighted_enemy_kind
     from Sobrevivencia.core.entities import Enemy, Hazard
 
 class EnemyManager:
     def _spawn_enemies(self, dt):
-        heat_multiplier = 1.0 + getattr(self, "heat_level", 0.0) / 100.0 * 0.75
-        difficulty = (1.0 + self.time_alive / 85.0 + (self.player.level - 1) * 0.09) * heat_multiplier
-        self._update_special_spawns(dt, difficulty)
+        return spawn_enemies(self, dt)
 
-        if len(self.enemies) >= MAX_ENEMIES:
-            return
+    def _enemy_difficulty_rating(self):
+        return enemy_difficulty_rating(self)
 
-        delay = max(SPAWN_MIN_DELAY, SPAWN_START_DELAY / difficulty)
-        self.spawn_timer -= dt
-        if self.spawn_timer > 0:
-            return
+    def _highest_player_level(self):
+        return highest_player_level(self)
 
-        self.spawn_timer = delay
-        amount = 1
-        if self.time_alive > 80 and self.random.random() < 0.28:
-            amount += 1
-        if self.time_alive > 170 and self.random.random() < 0.18:
-            amount += 1
-        for _ in range(amount):
-            self._spawn_one_enemy(difficulty)
+    def _player_power_rating(self):
+        return player_power_rating(self)
+
+    def _player_power_rating_for(self, player):
+        return player_power_rating_for(self, player)
+
+    def _enemy_spawn_scales(self, kind, difficulty):
+        return enemy_spawn_scales(kind, difficulty)
+
+    def _choose_enemy_tier(self, kind, difficulty):
+        return choose_enemy_tier(self, kind, difficulty)
+
+    def _apply_enemy_tier(self, enemy, tier):
+        return apply_enemy_tier(enemy, tier)
+
+    def _active_spitter_cap(self):
+        return active_spitter_cap(self)
 
     def _update_special_spawns(self, dt, difficulty):
-        heat_factor = 1.0 + getattr(self, "heat_level", 0.0) / 100.0 * 1.5
-        self.chromatic_spawn_timer -= dt * heat_factor
-        if self.chromatic_spawn_timer <= 0:
-            if len(self.enemies) < MAX_ENEMIES:
-                self._spawn_special_enemy("chromatic", difficulty)
-            self.chromatic_spawn_timer = self.random.uniform(CHROMATIC_SPAWN_MIN, CHROMATIC_SPAWN_MAX)
+        return update_special_spawns(self, dt, difficulty)
 
-        self.miniboss_spawn_timer -= dt * (1.0 + getattr(self, "heat_level", 0.0) / 100.0 * 0.5)
-        has_miniboss = any(enemy.kind == "miniboss" for enemy in self.enemies)
-        if self.miniboss_spawn_timer <= 0:
-            if self.time_alive > 45 and not has_miniboss and len(self.enemies) < MAX_ENEMIES:
-                self._spawn_special_enemy("miniboss", difficulty)
-            self.miniboss_spawn_timer = self.random.uniform(MINIBOSS_SPAWN_MIN, MINIBOSS_SPAWN_MAX)
+    def _update_reaper_spawn_pressure(self, dt):
+        return update_reaper_spawn_pressure(self, dt)
 
     def _spawn_special_enemy(self, kind, difficulty):
-        angle = self.random.random() * math.tau
-        if kind == "chromatic":
-            distance = self.random.uniform(420, 610)
-            health_scale = min(2.2, 1.0 + (difficulty - 1.0) * 0.16)
-            speed_scale = min(1.45, 1.0 + (difficulty - 1.0) * 0.06)
-            lifetime = CHROMATIC_LIFETIME
-            message = "Um Erratico Cromatico apareceu perto da tela."
-        else:
-            distance = self.random.uniform(650, 820)
-            health_scale = min(2.4, 1.0 + (difficulty - 1.0) * 0.20)
-            speed_scale = 1.0
-            lifetime = -1
-            message = "Mini-boss avistado: fique longe dos avisos vermelhos."
-
-        pos = self.player.pos + Vector2(math.cos(angle), math.sin(angle)) * distance
-        data = ENEMY_TYPES[kind]
-        enemy = Enemy(
-            id=self.enemy_id,
-            pos=pos,
-            kind=kind,
-            radius=data["radius"],
-            speed=data["speed"] * speed_scale * self.director_speed,
-            max_health=data["health"] * health_scale * self.director_health,
-            health=data["health"] * health_scale * self.director_health,
-            damage=data["damage"] * self.director_damage,
-            xp_value=data["xp"],
-            color=data["color"],
-            special_value=data["special"],
-            coin_chance=data["coin_chance"],
-            lifetime=lifetime,
-            phase=self.random.random() * math.tau,
-            special_timer=self.random.uniform(2.2, 4.0),
-        )
-        self.enemy_id += 1
-        self._setup_physics_entity(enemy)
-
-        if not self.world.circle_hits_wall(enemy.pos, enemy.radius):
-            self.enemies.append(enemy)
-            self.message = message
-            if kind == "miniboss":
-                self.miniboss_arena_center = Vector2(enemy.pos)
-                self.miniboss_arena_radius = 520.0
-                trapped = min(self.alive_players(), key=lambda p: p.pos.distance_to(enemy.pos), default=self.player)
-                self.miniboss_trapped_player = trapped
+        return spawn_special_enemy(self, kind, difficulty)
 
     def _spawn_one_enemy(self, difficulty):
-        angle = self.random.random() * math.tau
-        distance = self.random.uniform(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
-        pos = self.player.pos + Vector2(math.cos(angle), math.sin(angle)) * distance
+        return spawn_one_enemy(self, difficulty)
 
-        is_night = getattr(self, "light_level", 1.0) < 0.15
-        roll = self.random.random()
-        
-        if is_night:
-            if roll < 0.22:
-                kind = "morcego_sombra"
-            elif roll < 0.44:
-                kind = "lobo_infectado"
-            elif roll < 0.62:
-                kind = "phantom"
-            elif roll < 0.80:
-                kind = "runner"
-            else:
-                kind = "basic"
-        else:
-            if roll < 0.08:
-                kind = "phantom"
-            elif roll < 0.16:
-                kind = "golem"
-            elif roll < 0.24:
-                kind = "necromancer"
-            elif self.time_alive > 190 and roll < 0.32:
-                kind = "sapper"
-            elif self.time_alive > 150 and roll < 0.42:
-                kind = "bulwark"
-            elif self.time_alive > 95 and roll < 0.50:
-                kind = "spitter"
-            elif self.time_alive > 75 and roll < 0.65:
-                kind = "brute"
-            elif self.time_alive > 25 and roll < 0.82:
-                kind = "runner"
-            else:
-                kind = "basic"
-
-        data = ENEMY_TYPES[kind]
-        enemy = Enemy(
-            id=self.enemy_id,
-            pos=pos,
-            kind=kind,
-            radius=data["radius"],
-            speed=data["speed"] * min(1.75, 1.0 + (difficulty - 1.0) * 0.08) * self.director_speed,
-            max_health=data["health"] * min(2.6, 1.0 + (difficulty - 1.0) * 0.18) * self.director_health,
-            health=data["health"] * min(2.6, 1.0 + (difficulty - 1.0) * 0.18) * self.director_health,
-            damage=data["damage"] * self.director_damage,
-            xp_value=data["xp"],
-            color=data["color"],
-            special_value=data["special"],
-            coin_chance=data["coin_chance"],
-        )
-        self.enemy_id += 1
-        self._setup_physics_entity(enemy)
-
-        if not self.world.circle_hits_wall(enemy.pos, enemy.radius):
-            self.enemies.append(enemy)
+    def _weighted_enemy_kind(self, pos):
+        return weighted_enemy_kind(self, pos)
 
     def _nearest_alive_player(self, pos):
         best_target = None
@@ -176,31 +85,37 @@ class EnemyManager:
 
     def _update_enemies(self, dt):
         alive_list = []
+        time_scale = self.omni_time_freeze_multiplier() if hasattr(self, "omni_time_freeze_multiplier") else 1.0
+        enemy_dt = dt * time_scale
         for enemy in list(self.enemies):
-            enemy.phase += dt
-            enemy.frozen_timer = max(0, enemy.frozen_timer - dt)
-            enemy.hit_flash = max(0, enemy.hit_flash - dt)
+            enemy.phase += enemy_dt
+            enemy.frozen_timer = max(0, enemy.frozen_timer - enemy_dt)
+            enemy.hit_flash = max(0, enemy.hit_flash - enemy_dt)
+            enemy.blood_mark_timer = max(0, getattr(enemy, "blood_mark_timer", 0) - enemy_dt)
+            if enemy.blood_mark_timer <= 0:
+                enemy.blood_mark_level = 0
+                enemy.blood_harvest_value = 0
             if enemy.lifetime > 0:
-                enemy.lifetime -= dt
+                enemy.lifetime -= enemy_dt
                 if enemy.lifetime <= 0 and enemy.kind == "chromatic":
                     self.add_floater(enemy.pos, "escapou", COLORS["muted"])
                     self._cleanup_physics_entity(enemy)
                     continue
             if enemy.poison_timer > 0:
-                enemy.poison_timer = max(0, enemy.poison_timer - dt)
-                self.damage_enemy(enemy, enemy.poison_dps * dt, source="poison")
+                enemy.poison_timer = max(0, enemy.poison_timer - enemy_dt)
+                self.damage_enemy(enemy, enemy.poison_dps * enemy_dt, source="poison")
                 if enemy.health <= 0:
                     self._cleanup_physics_entity(enemy)
                     continue
             if enemy.bleed_timer > 0:
-                enemy.bleed_timer = max(0, enemy.bleed_timer - dt)
-                self.damage_enemy(enemy, enemy.bleed_dps * dt, source="bleed")
+                enemy.bleed_timer = max(0, enemy.bleed_timer - enemy_dt)
+                self.damage_enemy(enemy, enemy.bleed_dps * enemy_dt, source="bleed")
                 if enemy.health <= 0:
                     self._cleanup_physics_entity(enemy)
                     continue
 
             if enemy.kind == "phantom":
-                enemy.special_timer -= dt
+                enemy.special_timer -= enemy_dt
                 if enemy.special_timer <= 0:
                     enemy.intangible = not getattr(enemy, "intangible", False)
                     enemy.special_timer = 4.0 if enemy.intangible else 6.0
@@ -225,31 +140,33 @@ class EnemyManager:
                         self.add_alert(enemy.pos, "VULNERAVEL!", "#9333EA")
             elif enemy.kind == "golem":
                 enemy.knockback = Vector2(0, 0)
+            elif enemy.kind == "harbinger":
+                enemy.immune_to_knockback = True
+            elif enemy.kind == "reaper":
+                enemy.immune_to_knockback = True
+                self._apply_reaper_presence(enemy, enemy_dt)
             elif enemy.kind == "necromancer":
-                enemy.summon_cooldown -= dt
+                enemy.summon_cooldown -= enemy_dt
+                enemy.special_timer -= enemy_dt
+                if enemy.special_timer <= 0:
+                    healed = 0
+                    for ally in self.enemies:
+                        if ally is enemy or ally.health <= 0:
+                            continue
+                        if ally.pos.distance_squared_to(enemy.pos) <= 210 * 210 and ally.health < ally.max_health:
+                            ally.health = min(ally.max_health, ally.health + 22)
+                            ally.hit_flash = 0.08
+                            healed += 1
+                    if healed:
+                        self.emit_particles(enemy.pos, count=24, color="#86EFAC", speed=110)
+                        self.add_alert(enemy.pos, f"CURA x{healed}", "#86EFAC")
+                    enemy.special_timer = 7.5
                 if enemy.summon_cooldown <= 0 and len(self.enemies) < MAX_ENEMIES:
                     enemy.summon_cooldown = 12.0
                     for _ in range(2):
                         if len(self.enemies) < MAX_ENEMIES:
-                            minion_data = ENEMY_TYPES["minion"]
-                            minion = Enemy(
-                                id=self.enemy_id,
-                                pos=enemy.pos + self.random_offset(25),
-                                kind="minion",
-                                radius=minion_data["radius"],
-                                speed=minion_data["speed"] * self.director_speed,
-                                max_health=minion_data["health"] * self.director_health,
-                                health=minion_data["health"] * self.director_health,
-                                damage=minion_data["damage"] * self.director_damage,
-                                xp_value=minion_data["xp"],
-                                color=minion_data["color"],
-                                special_value=minion_data["special"],
-                                coin_chance=minion_data["coin_chance"],
-                            )
-                            self.enemy_id += 1
-                            self._setup_physics_entity(minion)
-                            self.enemies.append(minion)
-                    self.emit_particles(enemy.pos, count=28, color="#C084FC", speed=120)
+                            self._spawn_minion(enemy.pos + self.random_offset(25))
+                            self.emit_particles(enemy.pos, count=28, color="#C084FC", speed=120)
                     self.add_alert(enemy.pos, "INVOCANDO!", "#C084FC")
 
             target = self._nearest_alive_player(enemy.pos)
@@ -261,7 +178,7 @@ class EnemyManager:
 
             # Crowd and Miniboss Arena physics:
             center = getattr(self, "miniboss_arena_center", None)
-            if center is not None and enemy.kind != "miniboss":
+            if center is not None and enemy.kind not in ("miniboss", "reaper"):
                 radius = getattr(self, "miniboss_arena_radius", 520.0)
                 dist = enemy.pos.distance_to(center)
                 to_center = (center - enemy.pos)
@@ -316,19 +233,30 @@ class EnemyManager:
             if enemy.kind == "chromatic":
                 velocity = self._chromatic_velocity(enemy, chase_speed)
             elif enemy.kind == "miniboss":
-                velocity = self._miniboss_velocity(enemy, direction, chase_speed, dt)
+                velocity = self._miniboss_velocity(enemy, direction, chase_speed, enemy_dt)
             elif enemy.kind == "spitter":
-                velocity = self._spitter_velocity(enemy, direction, chase_speed, dt)
+                velocity = self._spitter_velocity(enemy, direction, chase_speed, enemy_dt)
+            elif enemy.kind == "harbinger":
+                velocity = self._harbinger_velocity(enemy, direction, chase_speed, enemy_dt)
+            elif enemy.kind == "reaper":
+                velocity = self._reaper_velocity(enemy, direction, chase_speed, enemy_dt)
+            elif enemy.kind == "god":
+                velocity = self._god_velocity(enemy, direction, chase_speed, enemy_dt)
+            elif enemy.kind in ("morcego_sombra", "lobo_infectado"):
+                velocity = self._nightstalker_velocity(enemy, direction, chase_speed, enemy_dt)
             else:
                 velocity = direction * chase_speed
             if enemy.knockback.length_squared() > 1:
                 velocity += enemy.knockback
-                enemy.knockback *= max(0, 1.0 - 7.0 * dt)
+                if getattr(enemy, "immune_to_knockback", False):
+                    enemy.knockback = Vector2(0, 0)
+                else:
+                    enemy.knockback *= max(0, 1.0 - 7.0 * enemy_dt)
 
             if enemy.body:
                 enemy.body.velocity = velocity.x, velocity.y
             else:
-                enemy.pos = self._move_enemy(enemy, direction, chase_speed, velocity, dt)
+                enemy.pos = self._move_enemy(enemy, direction, chase_speed, velocity, enemy_dt)
 
             # Contact damage: check all alive players and NPCs
             sapper_detonated = False
@@ -339,7 +267,7 @@ class EnemyManager:
                     distance_sq = enemy.pos.distance_squared_to(npc.pos)
                     contact_radius = enemy.radius + npc.radius
                     if distance_sq <= contact_radius * contact_radius:
-                        npc.hp -= enemy.damage * dt
+                        npc.hp -= enemy.damage * enemy_dt
                         npc.hit_flash = 0.1
                         if enemy.kind == 'sapper' and distance_sq <= (enemy.radius + npc.radius + 38) ** 2:
                             self._detonate_sapper(enemy)
@@ -362,9 +290,9 @@ class EnemyManager:
                         push = enemy.pos - player.pos
                         if push.length_squared() > 0:
                             enemy.knockback += push.normalize() * 460
-                        self.damage_enemy(enemy, 22 * dt, source="shield")
+                        self.damage_enemy(enemy, 22 * enemy_dt, source="shield")
                     elif player.invulnerable_timer <= 0:
-                        self._damage_player_direct(player, enemy.damage * dt)
+                        self._damage_player_direct(player, enemy.damage * enemy_dt)
                         if enemy.kind == "phantom":
                             player.buffs["freeze"] = max(player.buffs.get("freeze", 0), 2.0)
             if sapper_detonated:
@@ -404,18 +332,18 @@ class EnemyManager:
                 if enemy.action == "spit_warn":
                     start = Vector2(enemy.pos)
                     end = Vector2(enemy.target_pos)
-                    self._apply_laser_damage(start, end, 32, 26, ignore_enemy=enemy)
+                    self._apply_laser_damage(start, end, 28, 18, ignore_enemy=enemy)
                     self.item_events.append({
                         "type": "laser",
                         "start": start,
                         "end": end,
-                        "width": 32,
+                        "width": 28,
                         "age": 0.0,
                         "duration": 0.18,
                         "color": "#84CC16",
                     })
                 enemy.action = ""
-                enemy.special_timer = self.random.uniform(2.8, 4.2)
+                enemy.special_timer = self.random.uniform(4.0, 5.8)
             return Vector2(0, 0)
 
         enemy.special_timer -= dt
@@ -438,6 +366,159 @@ class EnemyManager:
         else:
             desired = tangent * 0.65
         return desired.normalize() * chase_speed
+
+    def _harbinger_velocity(self, enemy, direction, chase_speed, dt):
+        return harbinger_velocity(self, enemy, direction, chase_speed, dt)
+
+    def _apply_reaper_presence(self, enemy, dt):
+        return apply_reaper_presence(self, enemy, dt)
+
+    def _reaper_velocity(self, enemy, direction, chase_speed, dt):
+        return reaper_velocity(self, enemy, direction, chase_speed, dt)
+
+    def _start_reaper_blink(self, enemy, target):
+        return start_reaper_blink(self, enemy, target)
+
+    def _start_reaper_dash(self, enemy, target):
+        return start_reaper_dash(self, enemy, target)
+
+    def _start_reaper_doom(self, enemy, target):
+        return start_reaper_doom(self, enemy, target)
+
+    def _god_velocity(self, enemy, direction, chase_speed, dt):
+        target = self._nearest_alive_player(enemy.pos)
+        distance = enemy.pos.distance_to(target.pos)
+        
+        # Invocacao de lacaios do Harbinger
+        enemy.summon_cooldown -= dt
+        if enemy.summon_cooldown <= 0:
+            enemy.summon_cooldown = self.random.uniform(6.0, 9.0)
+            for i in range(3):
+                pos = enemy.pos + self.random_offset(150)
+                if len(self.enemies) < MAX_ENEMIES:
+                    kind = self.random.choice(["bulwark", "phantom", "necromancer"])
+                    # Re-use _spawn_one_enemy with a forced position? No, use _spawn_minion equivalent or create enemy directly
+                    from Sobrevivencia.core.entities import Enemy
+                    data = ENEMY_TYPES[kind]
+                    minion = Enemy(
+                        id=self.enemy_id,
+                        pos=pos,
+                        kind=kind,
+                        radius=data["radius"],
+                        speed=data["speed"],
+                        max_health=data["health"],
+                        health=data["health"],
+                        damage=data["damage"],
+                        xp_value=data["xp"],
+                        color=data["color"],
+                        special_value=data["special"],
+                        coin_chance=data["coin_chance"],
+                    )
+                    self.enemy_id += 1
+                    self._setup_physics_entity(minion)
+                    self.enemies.append(minion)
+            self.add_alert(enemy.pos, "GUARDA DIVINA", "#FDE047")
+            self.emit_particles(enemy.pos, count=30, color="#FDE047", speed=200)
+
+        if enemy.action:
+            enemy.action_timer -= dt
+            if enemy.action == "reaper_dash":
+                if enemy.action_timer <= 0:
+                    start = Vector2(getattr(enemy, "dash_start", enemy.pos))
+                    end = Vector2(enemy.pos)
+                    self._apply_laser_damage(start, end, 100, enemy.damage * 1.5, ignore_enemy=enemy)
+                    self.item_events.append({
+                        "type": "laser",
+                        "start": start,
+                        "end": end,
+                        "width": 100,
+                        "age": 0.0,
+                        "duration": 0.3,
+                        "color": "#FDE047",
+                    })
+                    self.screen_shake = max(self.screen_shake, 18.0)
+                    enemy.action = ""
+                    enemy.special_timer = self.random.uniform(1.5, 2.5)
+                    return Vector2(0, 0)
+                return Vector2(getattr(enemy, "dash_dir", direction)) * chase_speed * 4.0
+            if enemy.action_timer <= 0:
+                if enemy.action == "reaper_blink":
+                    landing = self.world.move_circle(Vector2(enemy.target_pos), enemy.radius, Vector2(0, 0), include_destructibles=False)
+                    enemy.pos = landing
+                    if enemy.body:
+                        enemy.body.position = landing.x, landing.y
+                    self._apply_area_damage(landing, 200, enemy.damage * 1.2, "god", ignore_enemy=enemy)
+                    self.item_events.append({
+                        "type": "explosion",
+                        "pos": landing,
+                        "radius": 200,
+                        "damage": 0,
+                        "age": 0.0,
+                        "duration": 0.4,
+                    })
+                    self.emit_particles(landing, count=40, color="#FDE047", speed=250, lifetime=0.5, size=8)
+                    self.screen_shake = max(self.screen_shake, 15.0)
+                elif enemy.action == "reaper_doom":
+                    center = Vector2(enemy.target_pos)
+                    self._apply_area_damage(center, REAPER_DOOM_RADIUS + 50, enemy.damage * 1.5, "god", ignore_enemy=enemy)
+                    self.item_events.append({
+                        "type": "explosion",
+                        "pos": center,
+                        "radius": REAPER_DOOM_RADIUS + 50,
+                        "damage": 0,
+                        "age": 0.0,
+                        "duration": 0.5,
+                    })
+                    self.emit_particles(center, count=50, color="#CA8A04", speed=250, lifetime=0.6, size=9)
+                    self.screen_shake = max(self.screen_shake, 20.0)
+                enemy.action = ""
+                enemy.special_timer = self.random.uniform(1.8, 3.0)
+            return Vector2(0, 0)
+
+        enemy.special_timer -= dt
+        if enemy.special_timer <= 0 and distance < 1000:
+            roll = self.random.random()
+            if distance > 300 and roll < 0.4:
+                self._start_reaper_blink(enemy, target)
+                self.message = "Deus transita pelo tecido do universo."
+                return Vector2(0, 0)
+            if roll < 0.8:
+                self._start_reaper_dash(enemy, target)
+                self.message = "Uma investida divina se prepara."
+                return Vector2(0, 0)
+            self._start_reaper_doom(enemy, target)
+            self.message = "Julgamento divino eminente!"
+            return Vector2(0, 0)
+
+        side = direction.rotate(90 if math.sin(enemy.phase * 3.1 + enemy.id) > 0 else -90)
+        if distance > 400:
+            desired = direction * 1.6 + side * 0.2
+        elif distance < 150:
+            desired = direction * 0.8 + side * 0.6
+        else:
+            desired = direction * 1.2 + side * 0.4
+        return desired.normalize() * chase_speed
+
+    def _nightstalker_velocity(self, enemy, direction, chase_speed, dt):
+        target = self._nearest_alive_player(enemy.pos)
+        enemy.special_timer -= dt
+        if enemy.kind == "morcego_sombra" and enemy.special_timer <= 0:
+            side = direction.rotate(90 if enemy.id % 2 == 0 else -90)
+            enemy.pos = self.world.move_circle(enemy.pos, enemy.radius, (direction * 95 + side * 150), include_destructibles=False)
+            enemy.special_timer = self.random.uniform(2.2, 3.4)
+            self.emit_particles(enemy.pos, count=10, color="#C084FC", speed=95)
+        elif enemy.kind == "lobo_infectado" and enemy.special_timer <= 0:
+            enemy.action = "charge"
+            enemy.action_timer = 0.42
+            enemy.target_pos = Vector2(target.pos)
+            enemy.special_timer = self.random.uniform(3.0, 4.6)
+        if enemy.action == "charge":
+            enemy.action_timer -= dt
+            if enemy.action_timer <= 0:
+                enemy.action = ""
+            return direction * chase_speed * 2.1
+        side = direction.rotate(90 if math.sin(enemy.phase * 3.0 + enemy.id) > 0 else -90)
+        return (direction * 0.78 + side * 0.42).normalize() * chase_speed
 
     def _start_spitter_shot(self, enemy):
         target = self._nearest_alive_player(enemy.pos)
@@ -475,129 +556,6 @@ class EnemyManager:
         self.screen_shake = max(self.screen_shake, 9.0)
         self.add_floater(center, "BOOM", COLORS["coin"])
 
-    def _miniboss_velocity(self, enemy, direction, chase_speed, dt):
-        enemy.summon_cooldown = max(0.0, enemy.summon_cooldown - dt)
-        if enemy.action:
-            enemy.action_timer -= dt
-            if enemy.action_timer <= 0:
-                if enemy.action == "leap_warn":
-                    landing = Vector2(enemy.target_pos)
-                    enemy.pos = self.world.move_circle(landing, enemy.radius, Vector2(0, 0), include_destructibles=False)
-                    self._apply_area_damage(landing, MINIBOSS_LEAP_RADIUS, MINIBOSS_LEAP_DAMAGE, "miniboss", ignore_enemy=enemy)
-                    self.item_events.append({
-                        "type": "explosion",
-                        "pos": landing,
-                        "radius": MINIBOSS_LEAP_RADIUS,
-                        "damage": 0,
-                        "age": 0.0,
-                        "duration": 0.28,
-                    })
-                    self.emit_particles(landing, count=28, color=COLORS["danger"], speed=230, lifetime=0.38, size=6)
-                    self.screen_shake = max(self.screen_shake, 13.0)
-                elif enemy.action == "laser_warn":
-                    start = Vector2(enemy.pos)
-                    end = Vector2(enemy.target_pos)
-                    self._apply_laser_damage(start, end, MINIBOSS_LASER_WIDTH, MINIBOSS_LASER_DAMAGE, ignore_enemy=enemy)
-                    self.item_events.append({
-                        "type": "laser",
-                        "start": start,
-                        "end": end,
-                        "width": MINIBOSS_LASER_WIDTH,
-                        "age": 0.0,
-                        "duration": 0.22,
-                        "color": "#F97316",
-                    })
-                    self.screen_shake = max(self.screen_shake, 8.0)
-                elif enemy.action == "shockwave_warn":
-                    center = Vector2(enemy.pos)
-                    self._apply_area_damage(center, 220, 36, "miniboss", ignore_enemy=enemy)
-                    self.item_events.append({
-                        "type": "explosion",
-                        "pos": center,
-                        "radius": 220,
-                        "damage": 0,
-                        "age": 0.0,
-                        "duration": 0.34,
-                    })
-                    self.emit_particles(center, count=30, color="#C4B5FD", speed=220, lifetime=0.42, size=5)
-                    self.screen_shake = max(self.screen_shake, 12.0)
-                # summon action ends silently — minions were spawned at start
-
-                enemy.action = ""
-                enemy.special_timer = self.random.uniform(3.2, 5.2)
-            return Vector2(0, 0)
-
-        enemy.special_timer -= dt
-        target_mb = self._nearest_alive_player(enemy.pos)
-        if enemy.special_timer <= 0 and enemy.pos.distance_squared_to(target_mb.pos) < (900 * 900):
-            roll = self.random.random()
-            if not enemy.enraged and enemy.health <= enemy.max_health * 0.45:
-                enemy.enraged = True
-                enemy.speed *= 1.22
-                enemy.damage *= 1.18
-                self.message = "Mini-boss enfurecido!"
-            if roll < 0.26 and enemy.summon_cooldown <= 0:
-                self._start_miniboss_summon(enemy)
-            elif roll < 0.52:
-                self._start_miniboss_leap(enemy)
-            elif roll < 0.78:
-                self._start_miniboss_laser(enemy)
-            else:
-                self._start_miniboss_shockwave(enemy)
-            return Vector2(0, 0)
-
-        return direction * chase_speed
-
-    def _start_miniboss_leap(self, enemy):
-        leap_target = self._nearest_alive_player(enemy.pos)
-        target = Vector2(leap_target.pos) + self.random_offset(70)
-        enemy.target_pos = target
-        enemy.action = "leap_warn"
-        enemy.action_timer = MINIBOSS_LEAP_WARNING
-        self.item_events.append({
-            "type": "danger_circle",
-            "pos": target,
-            "radius": MINIBOSS_LEAP_RADIUS,
-            "age": 0.0,
-            "duration": MINIBOSS_LEAP_WARNING,
-            "color": COLORS["danger"],
-        })
-        self.message = "Salto do mini-boss: saia do circulo vermelho."
-
-    def _start_miniboss_laser(self, enemy):
-        laser_target = self._nearest_alive_player(enemy.pos)
-        direction = laser_target.pos - enemy.pos
-        if direction.length_squared() <= 0.001:
-            direction = Vector2(1, 0)
-        direction = direction.normalize()
-        start = Vector2(enemy.pos)
-        end = start + direction * MINIBOSS_LASER_RANGE
-        enemy.target_pos = end
-        enemy.action = "laser_warn"
-        enemy.action_timer = MINIBOSS_LASER_WARNING
-        self.item_events.append({
-            "type": "danger_line",
-            "start": start,
-            "end": end,
-            "width": MINIBOSS_LASER_WIDTH,
-            "age": 0.0,
-            "duration": MINIBOSS_LASER_WARNING,
-            "color": COLORS["danger"],
-        })
-        self.message = "Laser do mini-boss: fuja da faixa vermelha."
-
-    def _start_miniboss_shockwave(self, enemy):
-        enemy.action = "shockwave_warn"
-        enemy.action_timer = 0.78
-        self.item_events.append({
-            "type": "danger_circle",
-            "pos": Vector2(enemy.pos),
-            "radius": 220,
-            "age": 0.0,
-            "duration": 0.78,
-            "color": COLORS["danger"],
-        })
-        self.message = "Pulso do mini-boss: afaste-se."
 
     def _move_enemy(self, enemy, direction, chase_speed, velocity, dt):
         old_pos = Vector2(enemy.pos)
@@ -629,41 +587,37 @@ class EnemyManager:
                 best_pos = test_pos
         return best_pos
 
-    def _start_miniboss_summon(self, enemy):
-        enemy.action = "summon"
-        enemy.action_timer = MINIBOSS_SUMMON_DURATION
-        enemy.summon_cooldown = self.random.uniform(MINIBOSS_SUMMON_COOLDOWN_MIN, MINIBOSS_SUMMON_COOLDOWN_MAX)
-        count = self.random.randint(MINIBOSS_SUMMON_COUNT_MIN, MINIBOSS_SUMMON_COUNT_MAX)
-        spawned = 0
-        for _ in range(count * 4):
-            if spawned >= count:
-                break
-            angle = self.random.random() * math.tau
-            dist = self.random.uniform(60, 130)
-            pos = enemy.pos + Vector2(math.cos(angle), math.sin(angle)) * dist
-            if not self.world.circle_hits_wall(pos, 11):
-                self._spawn_minion(pos)
-                spawned += 1
-        self.item_events.append({
-            "type": "summon_pulse",
-            "pos": Vector2(enemy.pos),
-            "radius": 140,
-            "age": 0.0,
-            "duration": MINIBOSS_SUMMON_DURATION,
-        })
-        self.message = "Mini-boss invocou reforcos!"
 
-    def _spawn_minion(self, pos):
-        data = ENEMY_TYPES["minion"]
+    def _miniboss_velocity(self, enemy, direction, chase_speed, dt):
+        return miniboss_velocity(self, enemy, direction, chase_speed, dt)
+
+    def _start_miniboss_leap(self, enemy):
+        return start_miniboss_leap(self, enemy)
+
+    def _start_miniboss_laser(self, enemy):
+        return start_miniboss_laser(self, enemy)
+
+    def _start_miniboss_shockwave(self, enemy):
+        return start_miniboss_shockwave(self, enemy)
+
+    def _start_miniboss_charge(self, enemy):
+        return start_miniboss_charge(self, enemy)
+
+    def _start_miniboss_summon(self, enemy):
+        return start_miniboss_summon(self, enemy)
+
+    def _spawn_minion(self, pos, kind="minion"):
+        data = ENEMY_TYPES[kind]
+        scales = self._enemy_spawn_scales(kind, self._enemy_difficulty_rating())
         minion = Enemy(
             id=self.enemy_id,
             pos=Vector2(pos),
-            kind="minion",
+            kind=kind,
             radius=data["radius"],
-            speed=data["speed"] * self.director_speed,
-            max_health=data["health"] * self.director_health,
-            health=data["health"] * self.director_health,
-            damage=data["damage"] * self.director_damage,
+            speed=data["speed"] * scales["speed"] * self.director_speed,
+            max_health=data["health"] * scales["health"] * self.director_health,
+            health=data["health"] * scales["health"] * self.director_health,
+            damage=data["damage"] * scales["damage"] * self.director_damage,
             xp_value=data["xp"],
             color=data["color"],
             special_value=data["special"],
@@ -675,17 +629,25 @@ class EnemyManager:
 
     def _update_director(self, dt):
         self.director_tick += dt
-        if self.director_tick >= 60.0:
-            self.director_tick -= 60.0
-            self.director_minute += 1
-            self.director_health = 1.0 + min(1.0, self.director_minute * 0.05)
-            self.director_damage = 1.0 + min(0.40, self.director_minute * 0.02)
-            self.director_speed = 1.0 + min(0.30, self.director_minute * 0.02)
-            bonus_enemies = min(45, self.director_minute * 5)
-            self.message = (
-                f"Minuto {self.director_minute}: inimigos mais fortes!"
-            )
-            # Dynamically raise the enemy cap
-            global MAX_ENEMIES
-            MAX_ENEMIES = 95 + bonus_enemies
+        self.director_eval_timer = getattr(self, "director_eval_timer", 0.0) + dt
+        if self.director_eval_timer >= DIRECTOR_PRESSURE_INTERVAL:
+            window = max(1.0, self.director_eval_timer)
+            self.director_eval_timer = 0.0
+            kills_rate = getattr(self, "director_recent_kills", 0) * 60.0 / window
+            damage_rate = getattr(self, "director_recent_damage_taken", 0.0) * 60.0 / window
+            kill_pressure = (kills_rate - DIRECTOR_TARGET_KILLS_PER_MIN) / DIRECTOR_TARGET_KILLS_PER_MIN
+            safety_pressure = (DIRECTOR_TARGET_DAMAGE_PER_MIN - damage_rate) / DIRECTOR_TARGET_DAMAGE_PER_MIN
+            target_pressure = max(0.0, min(DIRECTOR_MAX_PRESSURE, kill_pressure * 0.62 + safety_pressure * 0.38))
+            self.director_pressure = self.director_pressure * 0.72 + target_pressure * 0.28
+            self.director_recent_kills = 0
+            self.director_recent_damage_taken = 0.0
 
+        elapsed_minute = int(self.time_alive // 60.0)
+        if elapsed_minute > self.director_minute:
+            self.director_minute = elapsed_minute
+            pressure = getattr(self, "director_pressure", 0.0)
+            self.director_health = 1.0 + min(2.20, self.director_minute * 0.065 + pressure * 0.85)
+            self.director_damage = 1.0 + min(0.85, self.director_minute * 0.024 + pressure * 0.35)
+            self.director_speed = 1.0 + min(0.45, self.director_minute * 0.014 + pressure * 0.16)
+            self.director_enemy_cap_bonus = min(90, int(self.director_minute * 6 + pressure * 28))
+            self.message = f"Minuto {self.director_minute}: inimigos mais fortes!"

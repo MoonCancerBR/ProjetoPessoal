@@ -1,7 +1,9 @@
 if __package__:
     from ...data.constants import *
+    from ..meta_progress import add_coins
 else:
     from Sobrevivencia.data.constants import *
+    from Sobrevivencia.core.meta_progress import add_coins
 
 
 def collect_drop(game, drop, player=None):
@@ -27,6 +29,8 @@ def collect_drop(game, drop, player=None):
             game.shared_coins += 1
         else:
             player.coins += 1
+        game.run_coins_collected = getattr(game, "run_coins_collected", 0) + 1
+        add_coins(1)
         player.score += 25
         total_coins = game.shared_coins if game.multiplayer else player.coins
         if total_coins % 5 == 0:

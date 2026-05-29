@@ -54,7 +54,9 @@ class QuestManager:
         self.quest = None
         self.quest_progress = 0.0
         self.next_quest_timer = self.random.uniform(90.0, 150.0)
+        self.completed_quick_quests = getattr(self, "completed_quick_quests", 0) + 1
         self._grant_bonus_levels(3)
+        if self.completed_quick_quests >= 5:
+            self.grant_chalice_fragment("quest_5", self.player.pos)
         self.message = f"Missao concluida: {desc} | +3 niveis!"
         self.screen_shake = max(self.screen_shake, 10.0)
-

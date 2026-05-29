@@ -120,6 +120,8 @@ class Player:
     special_gain_bonus: float = 0
     vampirism: float = 0
     magazine_bonus: int = 0
+    ammo_reserve_bonus: int = 0
+    defense_bonus: float = 0
     reload_speed_bonus: float = 0
     passives: dict = field(default_factory=dict)
     # Bônus injetados pelos itens equipados (recalculados a cada mudança de inventário)
@@ -215,6 +217,10 @@ class Enemy:
     phase: float = 0
     special_timer: float = 0
     summon_cooldown: float = 0.0
+    immune_to_knockback: bool = False
+    blood_mark_timer: float = 0.0
+    blood_mark_level: int = 0
+    blood_harvest_value: int = 0
     
     # Physics
     body: Any = field(default=None, init=False)
@@ -224,6 +230,9 @@ class Enemy:
     action: str = ""
     action_timer: float = 0
     target_pos: Vector2 = field(default_factory=lambda: Vector2(0, 0))
+    tier: str = "common"
+    tier_rank: int = 0
+    damage_resistance: float = 0.0
 
 
 @dataclass
@@ -243,6 +252,12 @@ class Projectile:
     homing_level: int = 0
     stun_level: int = 0
     owner: int = 0
+    style: str = "bullet"
+    color: str = ""
+    trail_scale: float = 3.2
+    knockback: float = 0.0
+    mark_level: int = 0
+    mark_duration: float = 0.0
 
 
 @dataclass
@@ -263,6 +278,13 @@ class Slash:
     heavy_alloy_level: int = 0
     magnetic_pull_level: int = 0
     owner: int = 0
+    style: str = "swing"
+    color: str = ""
+    edge_color: str = ""
+    knockback: float = 330.0
+    pull_strength: float = 0.0
+    mark_level: int = 0
+    consume_mark: bool = False
 
 
 @dataclass
@@ -273,6 +295,8 @@ class Drop:
     radius: float = 10
     ttl: float = 18.0
     bob: float = 0
+    activation_timer: float = 0.0
+    activation_player_index: int = -1
 
 
 @dataclass
@@ -293,6 +317,16 @@ class Hazard:
     kind: str
     chunk: tuple
     pulse: float = 0
+
+
+@dataclass
+class StaticLight:
+    id: str
+    pos: Vector2
+    kind: str
+    radius: float
+    chunk: tuple
+    pulse: float = 0.0
 
 
 @dataclass
@@ -323,7 +357,7 @@ class PlayerConstruct:
 @dataclass
 class Altar:
     pos: Vector2
-    kind: str  # "weapon_altar", "skill_altar", "stat_altar"
+    kind: str  # "weapon_altar", "skill_altar", "stat_altar", "stamps_altar", "black_market_altar"
     radius: float = 24.0
     active: bool = True
     age: float = 0.0

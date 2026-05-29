@@ -5,8 +5,9 @@
   "move_right": ["keyboard:d", "keyboard:right"],
   "dash": ["keyboard:space"],
   "special": ["keyboard:e"],
-  "combo_special": ["keyboard:q"],
+  "combo_special": ["keyboard:r"],
   "inventory": ["keyboard:i", "keyboard:tab"],
   "skills": ["keyboard:k"],
-  "pause": ["keyboard:escape"]
+  "pause": ["keyboard:escape"],
+  "fullscreen": ["keyboard:f11"]
 }

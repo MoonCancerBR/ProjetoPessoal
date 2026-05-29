@@ -39,6 +39,28 @@ def render_state(
         return ui.render_pause(game, PAUSE_OPTIONS, selections["pause"], mouse_pos), selections, inventory_tab
     if state == "commands":
         return ui.render_commands(mouse_pos, app._command_lines(controls)), selections, inventory_tab
+    if state == "records":
+        return ui.render_records(mouse_pos), selections, inventory_tab
+    if state == "coin_shop":
+        return ui.render_coin_shop(mouse_pos, selections.get("coin_shop", 0)), selections, inventory_tab
+    if state == "character_unlock":
+        return ui.render_character_unlock(selections.get("character_unlock", 0), mouse_pos), selections, inventory_tab
+    if state == "character_unlock_detail":
+        return ui.render_character_unlock_detail(selections.get("character_unlock", 0), mouse_pos), selections, inventory_tab
+    if state == "character_unlock_confirm":
+        return ui.render_character_unlock_confirm(selections.get("character_unlock", 0), mouse_pos), selections, inventory_tab
+    if state == "character_upgrades":
+        return ui.render_character_upgrades(getattr(app, "character_upgrade_draft", {}), mouse_pos, selections.get("character_upgrade", 0)), selections, inventory_tab
+    if state == "character_upgrade_confirm":
+        return ui.render_character_upgrade_confirm(getattr(app, "character_upgrade_pending_key", ""), mouse_pos), selections, inventory_tab
+    if state == "record_details":
+        return ui.render_record_details(getattr(app, "record_details_index", 0), mouse_pos), selections, inventory_tab
+    if state == "record_kills":
+        return ui.render_record_kills(getattr(app, "record_details_index", 0), mouse_pos), selections, inventory_tab
+    if state == "record_delete_confirm":
+        return ui.render_record_delete_confirm(getattr(app, "record_delete_index", 0), mouse_pos), selections, inventory_tab
+    if state == "record_name":
+        return ui.render_record_name(game, getattr(app, "record_name_text", ""), mouse_pos), selections, inventory_tab
     if state == "progression":
         return ui.render_progression(game, mouse_pos), selections, inventory_tab
     if state == "settings":

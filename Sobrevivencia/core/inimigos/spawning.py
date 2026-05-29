@@ -16,10 +16,12 @@ def spawn_enemies(game, dt):
     difficulty = game._enemy_difficulty_rating() * heat_multiplier
     game._update_special_spawns(dt, difficulty)
 
-    if len(game.enemies) >= MAX_ENEMIES:
+    enemy_cap = MAX_ENEMIES + int(getattr(game, "director_enemy_cap_bonus", 0))
+    if len(game.enemies) >= enemy_cap:
         return
 
     delay = max(SPAWN_MIN_DELAY, SPAWN_START_DELAY / difficulty)
+    delay /= 1.0 + getattr(game, "director_pressure", 0.0) * 0.55
     game.spawn_timer -= dt
     if game.spawn_timer > 0:
         return
@@ -29,6 +31,8 @@ def spawn_enemies(game, dt):
     if game.time_alive > 80 and game.random.random() < 0.28:
         amount += 1
     if game.time_alive > 170 and game.random.random() < 0.18:
+        amount += 1
+    if game.time_alive > LATE_GAME_START_TIME and game.random.random() < min(0.50, getattr(game, "director_pressure", 0.0) * 0.55):
         amount += 1
     for _ in range(amount):
         game._spawn_one_enemy(difficulty)
@@ -194,6 +198,7 @@ def spawn_one_enemy(game, difficulty):
 
     data = ENEMY_TYPES[kind]
     scales = game._enemy_spawn_scales(kind, difficulty)
+    tier = game._choose_enemy_tier(kind, difficulty)
     enemy = Enemy(
         id=game.enemy_id,
         pos=pos,
@@ -208,6 +213,7 @@ def spawn_one_enemy(game, difficulty):
         special_value=data["special"],
         coin_chance=data["coin_chance"],
     )
+    game._apply_enemy_tier(enemy, tier)
     game.enemy_id += 1
     game._setup_physics_entity(enemy)
 
@@ -257,4 +263,3 @@ def weighted_enemy_kind(game, pos):
         if roll <= upto:
             return kind
     return "basic"
-

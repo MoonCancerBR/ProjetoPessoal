@@ -3,6 +3,7 @@ import math
 import pygame
 
 from ...data.constants import SCREEN_HEIGHT, SCREEN_WIDTH
+from .. import arcade_theme
 
 
 class MinimapRendererMixin:
@@ -14,7 +15,9 @@ class MinimapRendererMixin:
         
         # Translucent glassmorphic circular panel with custom Pygame surface channel alpha
         minimap_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-        pygame.draw.circle(minimap_surf, (15, 23, 42, 190), (r, r), r)
+        pygame.draw.circle(minimap_surf, (5, 5, 10, 210), (r, r), r)
+        for line_y in range(0, r * 2, max(2, self._s(4))):
+            pygame.draw.line(minimap_surf, (40, 216, 255, 20), (0, line_y), (r * 2, line_y), 1)
         
         radar_range = 1600.0  # Detection radius in world game coordinates
         scale = r / radar_range
@@ -33,27 +36,31 @@ class MinimapRendererMixin:
                     ax = r + diff.x * scale
                     ay = r + diff.y * scale
                     
-                    if altar.kind == "weapon_altar":
-                        color = (239, 68, 68) # Red
-                    elif altar.kind == "skill_altar":
-                        color = (139, 92, 246) # Purple
-                    else:
-                        color = (245, 158, 11) # Gold
+                    style = arcade_theme.altar_style(altar.kind)
+                    color = arcade_theme.rgb(style["color"])
                         
                     pulse = 1.0 + 0.3 * math.sin(game.time_alive * 8.0 + altar.age)
-                    pygame.draw.circle(minimap_surf, color, (int(ax), int(ay)), int(self._s(4) * pulse))
-                    pygame.draw.circle(minimap_surf, (255, 255, 255), (int(ax), int(ay)), int(self._s(4) * pulse), 1)
+                    sz = max(2, int(self._s(5) * pulse))
+                    marker = pygame.Rect(int(ax - sz), int(ay - sz), sz * 2, sz * 2)
+                    pygame.draw.rect(minimap_surf, color, marker)
+                    pygame.draw.rect(minimap_surf, (255, 255, 255), marker, 1)
 
         # Draw Mini-boss / Boss threats
         if getattr(game, 'enemies', None):
             for enemy in game.enemies:
-                if enemy.kind == "miniboss":
+                if enemy.kind in ("miniboss", "reaper", "harbinger"):
                     diff = enemy.pos - player.pos
                     if diff.length() < radar_range:
                         ex = r + diff.x * scale
                         ey = r + diff.y * scale
                         pulse = 1.0 + 0.4 * math.sin(game.time_alive * 12.0)
-                        pygame.draw.circle(minimap_surf, (249, 115, 22), (int(ex), int(ey)), int(self._s(3) * pulse))
+                        if enemy.kind == "reaper":
+                            pygame.draw.circle(minimap_surf, (220, 38, 38), (int(ex), int(ey)), int(self._s(5) * pulse))
+                            pygame.draw.circle(minimap_surf, (255, 245, 245), (int(ex), int(ey)), int(self._s(2.5) * pulse))
+                        elif enemy.kind == "harbinger":
+                            pygame.draw.circle(minimap_surf, (127, 29, 29), (int(ex), int(ey)), int(self._s(4) * pulse))
+                        else:
+                            pygame.draw.circle(minimap_surf, (249, 115, 22), (int(ex), int(ey)), int(self._s(3) * pulse))
 
         # Draw stamp drops on radar (highlighted diamonds)
         if getattr(game, 'drops', None):
@@ -103,8 +110,8 @@ class MinimapRendererMixin:
         self.screen.blit(minimap_surf, (cx - r, cy - r))
         
         # Compass metal ring border
-        pygame.draw.circle(self.screen, (30, 41, 59), (cx, cy), r, self._s(2))
-        pygame.draw.circle(self.screen, (59, 130, 246, 100), (cx, cy), r + self._s(1), self._s(1))
+        pygame.draw.circle(self.screen, arcade_theme.rgb("#26385E"), (cx, cy), r, self._s(2))
+        pygame.draw.circle(self.screen, arcade_theme.rgb("#28D7FF"), (cx, cy), r + self._s(1), self._s(1))
         
         # Compass directional tick marks (N, S, W, E)
         tick = self._s(4)

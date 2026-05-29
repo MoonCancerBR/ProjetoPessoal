@@ -14,16 +14,34 @@ class PlayerRendererMixin:
         for c in getattr(game, 'player_constructs', []):
             x, y = self.world_to_screen(c.pos, camera)
             pulse = math.sin(game.time_alive * 8 + c.pos.x) * 3
-            if c.kind == "turret":
+            if c.kind in ("turret", "laser_turret", "drone", "robo_minion"):
                 color = (245, 158, 11) if c.hit_flash <= 0 else (255, 255, 255)
+                if c.kind == "laser_turret":
+                    color = (250, 204, 21) if c.hit_flash <= 0 else (255, 255, 255)
+                elif c.kind == "drone":
+                    color = (56, 189, 248) if c.hit_flash <= 0 else (255, 255, 255)
+                elif c.kind == "robo_minion":
+                    color = (250, 204, 21) if c.hit_flash <= 0 else (255, 255, 255)
                 barrel = Vector2(math.cos(c.angle), math.sin(c.angle))
                 side = barrel.rotate(90)
-                pygame.draw.circle(self.screen, (120, 53, 15), (x, y), int(c.radius))
+                base_col = (120, 53, 15) if c.kind not in ("drone", "robo_minion") else (8, 47, 73)
+                pygame.draw.circle(self.screen, base_col, (x, y), int(c.radius))
                 pygame.draw.circle(self.screen, color, (x, y), int(c.radius), 3)
                 barrel_end = Vector2(x, y) + barrel * (c.radius + 12 + pulse * 0.3)
                 barrel_root = Vector2(x, y) - barrel * 4
-                pygame.draw.line(self.screen, color, barrel_root, barrel_end, 4)
+                pygame.draw.line(self.screen, color, barrel_root, barrel_end, 3 if c.kind == "drone" else 4)
                 pygame.draw.line(self.screen, (254, 243, 199), barrel_end - side * 3, barrel_end + side * 3, 2)
+                if c.kind == "laser_turret":
+                    pygame.draw.circle(self.screen, (254, 240, 138), (x, y), max(3, int(c.radius * 0.45)))
+                if c.kind == "robo_minion":
+                    bar_w = 34
+                    bar_h = 4
+                    fill = max(0.0, min(1.0, 1.0 - c.age / max(0.01, c.duration)))
+                    bx = x - bar_w // 2
+                    by = y - int(c.radius) - 12
+                    pygame.draw.rect(self.screen, (30, 41, 59), (bx, by, bar_w, bar_h), border_radius=2)
+                    pygame.draw.rect(self.screen, (250, 204, 21), (bx, by, int(bar_w * fill), bar_h), border_radius=2)
+                    pygame.draw.rect(self.screen, (254, 243, 199), (bx, by, bar_w, bar_h), 1, border_radius=2)
             elif c.kind == "barrier":
                 color = (14, 165, 233) if c.hit_flash <= 0 else (255, 255, 255)
                 r = int(c.radius + pulse)
@@ -74,6 +92,29 @@ class PlayerRendererMixin:
         elif player.invulnerable_timer > 0:
             self._draw_soft_circle((x, y), player.radius + 14, "#CBD5E1", alpha=38, rings=2)
             pygame.draw.circle(self.screen, (148, 163, 184), (x, y), int(player.radius + 7), 2)
+        if getattr(game, "omni_kernel_active", False):
+            omni_ready = game.omni_active_ready()
+            omni_ratio = game.omni_active_charge_ratio()
+            omni_color = "#FACC15" if omni_ready else "#38BDF8"
+            orbit_radius = int(player.radius + 18 + math.sin(game.time_alive * 5.0 + player.player_index) * 2)
+            if omni_ready:
+                self._draw_soft_circle((x, y), orbit_radius + 8, omni_color, alpha=34, rings=2)
+                for index in range(3):
+                    angle = game.time_alive * 2.5 + index * math.tau / 3.0 + player.player_index * 0.4
+                    orb = Vector2(x, y) + Vector2(math.cos(angle), math.sin(angle)) * (orbit_radius + 6)
+                    pygame.draw.circle(self.screen, hex_color(omni_color), (int(orb.x), int(orb.y)), 4)
+            else:
+                arc_rect = pygame.Rect(0, 0, (orbit_radius + 6) * 2, (orbit_radius + 6) * 2)
+                arc_rect.center = (x, y)
+                pygame.draw.circle(self.screen, (30, 41, 59), (x, y), orbit_radius + 6, 2)
+                pygame.draw.arc(
+                    self.screen,
+                    hex_color(omni_color),
+                    arc_rect,
+                    -math.pi / 2,
+                    -math.pi / 2 + math.tau * omni_ratio,
+                    4,
+                )
 
         char_data = CHARACTERS[player.char_class]
         color = hex_color(char_data["color"])
@@ -100,6 +141,17 @@ class PlayerRendererMixin:
                     pygame.draw.rect(self.screen, core, square, border_radius=2)
                     tool_end = Vector2(x, y) + aim * (player.radius * 0.72)
                     pygame.draw.line(self.screen, (254, 243, 199), (x, y), tool_end, 3)
+                elif char_data["shape"] == "circle_diamond":
+                    diamond = [
+                        (x, y - int(player.radius * 0.86)),
+                        (x + int(player.radius * 0.72), y),
+                        (x, y + int(player.radius * 0.86)),
+                        (x - int(player.radius * 0.72), y),
+                    ]
+                    pygame.draw.polygon(self.screen, core, diamond)
+                    blade_tip = Vector2(x, y) + aim * (player.radius * 0.94)
+                    blade_root = Vector2(x, y) - aim * (player.radius * 0.18)
+                    pygame.draw.line(self.screen, (254, 226, 226), blade_root, blade_tip, 2)
                 else:
                     self._draw_star((x, y), int(player.radius * 0.62), int(player.radius * 0.28), core, points=5)
 
@@ -153,7 +205,7 @@ class PlayerRendererMixin:
         key = (player.char_class, "idle_0", size, angle)
         sprite = cache.get(key)
         if sprite is None:
-            sprite = pygame.transform.smoothscale(frame, (size, size))
+            sprite = pygame.transform.scale(frame, (size, size))
             sprite = pygame.transform.rotate(sprite, angle)
             cache[key] = sprite
         rect = sprite.get_rect(center=(int(center[0]), int(center[1])))

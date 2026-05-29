@@ -7,16 +7,30 @@ else:
     from Sobrevivencia.data.constants import *
 
 
+MAX_ACTIVE_ALTARS = 2
+ALTAR_FIRST_SPAWN_DELAY = 10.0
+ALTAR_RESPAWN_DELAY = 35.0
+
+
 def spawn_altar(game):
+    active_altars = [altar for altar in getattr(game, "altars", []) if getattr(altar, "active", False)]
+    if len(active_altars) >= MAX_ACTIVE_ALTARS:
+        return False
+
     angle = game.random.random() * math.tau
     distance = game.random.uniform(400.0, 600.0)
     spawn_pos = game.player.pos + Vector2(math.cos(angle), math.sin(angle)) * distance
     spawn_pos = game.world.move_circle(spawn_pos, 24.0, Vector2(0, 0))
     kinds = ["weapon_altar", "stamps_altar", "skill_altar", "stat_altar", "black_market_altar"]
+    active_kinds = {altar.kind for altar in active_altars}
+    kinds = [kind for kind in kinds if kind not in active_kinds]
     if getattr(game, "black_market_cooldown", 0.0) > 0:
-        kinds.remove("black_market_altar")
+        kinds = [kind for kind in kinds if kind != "black_market_altar"]
     if not _has_upgradeable_passives(game) and "skill_altar" in kinds:
         kinds.remove("skill_altar")
+    if not kinds:
+        return False
+
     kind = game.random.choice(kinds)
     try:
         from ..entities import Altar
@@ -32,6 +46,7 @@ def spawn_altar(game):
     }
     game.message = f"Um Altar de {names[kind]} se manifestou na arena!"
     game.add_floater(spawn_pos, "ALTAR", COLORS["special"])
+    return True
 
 
 def update_altars(game, dt):
@@ -60,7 +75,7 @@ def update_altars(game, dt):
         game.altar_spawn_timer -= dt
         if game.altar_spawn_timer <= 0.0:
             spawn_altar(game)
-            game.altar_spawn_timer = 90.0
+            game.altar_spawn_timer = ALTAR_RESPAWN_DELAY
 
 
 def _has_upgradeable_passives(game):

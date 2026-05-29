@@ -104,5 +104,4 @@ def magazine_capacity_for(player):
 
 
 def max_ammo_reserve_for(player):
-    return STARTING_AMMO_RESERVE + max(0, player.level - 1) * 20
-
+    return STARTING_AMMO_RESERVE + max(0, player.level - 1) * 20 + getattr(player, "ammo_reserve_bonus", 0)

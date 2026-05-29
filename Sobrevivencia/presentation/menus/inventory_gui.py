@@ -22,6 +22,7 @@ if __package__:
         stamp_hud_color,
         stamp_sell_value,
     )
+    from .. import arcade_theme
     from ..ui_utils import hex_color
     from .ui_components import ObjectID
 else:
@@ -41,6 +42,7 @@ else:
         stamp_hud_color,
         stamp_sell_value,
     )
+    from Sobrevivencia.presentation import arcade_theme
     from Sobrevivencia.presentation.ui_utils import hex_color
     from Sobrevivencia.presentation.menus.ui_components import ObjectID
 
@@ -72,11 +74,13 @@ class InventoryGUI:
             inv.points,
             tuple(inv.active_slots),
             tuple(inv.fusion_marks),
+            tuple(sorted(getattr(game, "inventory_sale_marks", {}).get(game.menu_player_index, set()))),
+            tuple(sorted(getattr(game, "stamp_sale_marks", {}).get(game.menu_player_index, set()))),
             tuple((item.slot_key, item.key, item.level) for item in items),
             tuple((s.key, s.level) for s in player.weapon_stamps.get("weapon_1", [])),
             tuple((s.key, s.level) for s in player.weapon_stamps.get("weapon_2", [])),
             tuple((s.key, s.level) for s in player.stamp_reserve),
-            inv.black_market_unlocked,
+            getattr(getattr(game, "active_altar", None), "kind", None),
         )
 
         if not self.inv_window or not self.inv_window.alive() or self._last_inventory_signature != signature:
@@ -96,20 +100,33 @@ class InventoryGUI:
         self.inventory_tab_buttons = {}
         c = self.components
         inv = game.get_inventory(game.menu_player_index)
+        altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+        window_title, subtitle_extra, object_id = self._inventory_window_context(game, altar_kind)
 
-        title = f"J{game.menu_player_index + 1} - INVENTARIO" if game.multiplayer else "INVENTARIO"
-        self.inv_window = c.window(
+        title = f"J{game.menu_player_index + 1} - {window_title}" if game.multiplayer else window_title
+        self.inv_window = c.arcade_window(
             title,
             (940, 600),
-            "#inventory_window",
+            object_id,
             y=58,
-            player_index=game.menu_player_index if game.multiplayer else None,
         )
         if self.inv_window is None:
             return
 
         subtitle = f"Slots ativos {len(inv.active_slots)}/{MAX_ACTIVE_ITEMS} | Pontos {inv.points}"
-        c.label(pygame.Rect((20, 12), (520, 28)), subtitle, container=self.inv_window)
+        if subtitle_extra:
+            subtitle = f"{subtitle} | {subtitle_extra}"
+        c.label(pygame.Rect((20, 12), (650, 28)), subtitle, container=self.inv_window)
+        if altar_kind:
+            style = arcade_theme.altar_style(altar_kind)
+            badge = c.button(
+                pygame.Rect((720, 10), (180, 32)),
+                f"{style['glyph']} {style['label']}",
+                container=self.inv_window,
+                intent="arcade",
+            )
+            if badge:
+                badge.disable()
 
         if game.multiplayer:
             other = 2 if game.menu_player_index == 0 else 1
@@ -120,25 +137,20 @@ class InventoryGUI:
                 intent="secondary",
             )
 
-        self.inventory_tab_buttons["inventory_tab:items"] = c.button(
-            pygame.Rect((20, 46), (120, 32)),
-            "Itens",
-            container=self.inv_window,
-            intent="selected" if inventory_tab == "items" else "muted",
-        )
-        self.inventory_tab_buttons["inventory_tab:stamps"] = c.button(
-            pygame.Rect((150, 46), (120, 32)),
-            "Selos",
-            container=self.inv_window,
-            intent="selected" if inventory_tab == "stamps" else "muted",
-        )
-        if inv.black_market_unlocked:
-            self.inventory_tab_buttons["inventory_tab:shop"] = c.button(
-                pygame.Rect((280, 46), (180, 32)),
-                "Mercado Negro",
+        tab_defs = self._inventory_tabs_for_altar(altar_kind)
+        x = 20
+        for tab_key, label, width in tab_defs:
+            self.inventory_tab_buttons[f"inventory_tab:{tab_key}"] = c.button(
+                pygame.Rect((x, 46), (width, 32)),
+                label,
                 container=self.inv_window,
-                intent="selected" if inventory_tab == "shop" else "muted",
+                intent="selected" if inventory_tab == tab_key else "muted",
             )
+            x += width + 10
+
+        allowed_tabs = {tab_key for tab_key, _, _ in tab_defs}
+        if inventory_tab not in allowed_tabs:
+            inventory_tab = tab_defs[0][0]
 
         if inventory_tab == "shop":
             self._create_inventory_shop_tab(game, selected)
@@ -153,6 +165,25 @@ class InventoryGUI:
             container=self.inv_window,
             intent="muted",
         )
+
+    def _inventory_window_context(self, game, altar_kind):
+        if altar_kind == "weapon_altar":
+            return "ALTAR DE ARMAS", "aprimoramento de equipamentos", "#weapon_altar_window"
+        if altar_kind == "stamps_altar":
+            return "ALTAR DE SELOS", "aprimoramento de stamps", "#stamps_altar_window"
+        if altar_kind == "black_market_altar":
+            return "MERCADO NEGRO", "compras, vendas e fusoes", "#black_market_window"
+        title = "INVENTARIO"
+        return title, "equipar e desequipar", "#inventory_window"
+
+    def _inventory_tabs_for_altar(self, altar_kind):
+        if altar_kind == "weapon_altar":
+            return [("items", "Equipamentos", 160)]
+        if altar_kind == "stamps_altar":
+            return [("stamps", "Stamps", 140)]
+        if altar_kind == "black_market_altar":
+            return [("shop", "Compras", 130), ("items", "Equipamentos", 160), ("stamps", "Stamps", 120)]
+        return [("items", "Itens", 120), ("stamps", "Selos", 120)]
 
     def _create_inventory_shop_tab(self, game, selected):
         c = self.components
@@ -218,6 +249,7 @@ class InventoryGUI:
         active_items = [item for item in raw_items if inv.is_active(item.slot_key)]
         reserve_items = [item for item in raw_items if not inv.is_active(item.slot_key)]
         ordered_items = active_items + reserve_items
+        sale_marks = getattr(game, "inventory_sale_marks", {}).get(game.menu_player_index, set())
         selected = max(0, min(selected, len(ordered_items) - 1)) if ordered_items else 0
 
         c.label(pygame.Rect((30, 98), (260, 24)), "Ativos", container=self.inv_window)
@@ -230,7 +262,8 @@ class InventoryGUI:
         gap = 12
         for index in range(MAX_ACTIVE_ITEMS):
             item = active_items[index] if index < len(active_items) else None
-            is_selected = index == selected and item
+            is_marked = bool(item and item.slot_key in sale_marks)
+            is_selected = (index == selected and item) or is_marked
             
             panel_rect = pygame.Rect((16 + index * (slot + gap), 14), (slot, slot))
             panel_oid = ObjectID(class_id="@selected_upgrade_panel" if is_selected else "#item_button")
@@ -239,6 +272,8 @@ class InventoryGUI:
             if item:
                 img_surf = self._create_item_surface(item, (slot-8, slot-8), game)
                 c.image(pygame.Rect((4, 4), (slot-8, slot-8)), img_surf, container=slot_panel)
+                if is_marked:
+                    c.label(pygame.Rect((50, 50), (22, 18)), "V", container=slot_panel)
                 
             btn_oid = ObjectID(class_id="@selected_upgrade_btn" if is_selected else "@upgrade_btn")
             btn = c.button(
@@ -255,7 +290,8 @@ class InventoryGUI:
             index = len(active_items) + reserve_index
             col = reserve_index % 6
             row = reserve_index // 6
-            is_selected = index == selected
+            is_marked = item.slot_key in sale_marks
+            is_selected = index == selected or is_marked
             
             panel_rect = pygame.Rect((12 + col * (slot + gap), 12 + row * (slot + gap)), (slot, slot))
             panel_oid = ObjectID(class_id="@selected_upgrade_panel" if is_selected else "#item_button")
@@ -263,6 +299,8 @@ class InventoryGUI:
             
             img_surf = self._create_item_surface(item, (slot-8, slot-8), game)
             c.image(pygame.Rect((4, 4), (slot-8, slot-8)), img_surf, container=slot_panel)
+            if is_marked:
+                c.label(pygame.Rect((50, 50), (22, 18)), "V", container=slot_panel)
             
             btn_oid = ObjectID(class_id="@selected_upgrade_btn" if is_selected else "@upgrade_btn")
             btn = c.button(
@@ -315,14 +353,18 @@ class InventoryGUI:
         )
         y += 40
 
+        altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+        can_upgrade_item = altar_kind == "weapon_altar"
+        can_black_market = altar_kind == "black_market_altar"
+
         cost = 7 if selected_item.is_relic else (3 if selected_item.is_hybrid else 1)
         self.inventory_action_buttons["item_upgrade"] = c.button(
             pygame.Rect((12, y), (226, 34)),
             f"Upar ({cost} pts)",
             container=details,
-            intent="primary" if inv.points >= cost else "muted",
+            intent="primary" if can_upgrade_item and inv.points >= cost else "muted",
         )
-        if inv.points < cost:
+        if not can_upgrade_item or inv.points < cost:
             self.inventory_action_buttons["item_upgrade"].disable()
         y += 40
 
@@ -331,13 +373,13 @@ class InventoryGUI:
             pygame.Rect((12, y), (226, 34)),
             fuse_label,
             container=details,
-            intent="secondary",
+            intent="secondary" if can_black_market else "muted",
         )
-        if selected_item.is_relic:
+        if selected_item.is_relic or not can_black_market:
             self.inventory_action_buttons["item_fuse"].disable()
         y += 40
 
-        if selected_item.rank == 1 and selected_item.level >= MAX_ITEM_LEVEL and inv.black_market_unlocked:
+        if can_black_market and selected_item.rank == 1 and selected_item.level >= MAX_ITEM_LEVEL and inv.black_market_unlocked:
             self.inventory_action_buttons["item_transform"] = c.button(
                 pygame.Rect((12, y), (226, 34)),
                 "Transformar (15 pts)",
@@ -348,11 +390,23 @@ class InventoryGUI:
                 self.inventory_action_buttons["item_transform"].disable()
             y += 40
 
-        if not inv.is_active(selected_item.slot_key):
+        if can_black_market and not inv.is_active(selected_item.slot_key):
             value = inv.get_sell_value(selected_item.slot_key)
+            marked = selected_item.slot_key in sale_marks
             self.inventory_action_buttons["item_sell"] = c.button(
                 pygame.Rect((12, y), (226, 34)),
-                f"Vender ({value} pts)",
+                "Desmarcar venda" if marked else f"Marcar venda ({value} pts)",
+                container=details,
+                intent="secondary" if marked else "danger",
+            )
+            y += 40
+
+        marked_keys = [item.slot_key for item in ordered_items if item.slot_key in sale_marks and not inv.is_active(item.slot_key)]
+        if can_black_market and marked_keys:
+            total = sum(inv.get_sell_value(key) for key in marked_keys)
+            self.inventory_action_buttons["item_sell_confirm"] = c.button(
+                pygame.Rect((12, y), (226, 34)),
+                f"Vender {len(marked_keys)} ({total} pts)",
                 container=details,
                 intent="danger",
             )
@@ -363,6 +417,7 @@ class InventoryGUI:
         w1 = player.weapon_stamps.get("weapon_1", [])
         w2 = player.weapon_stamps.get("weapon_2", [])
         reserve = player.stamp_reserve
+        sale_marks = getattr(game, "stamp_sale_marks", {}).get(game.menu_player_index, set())
         entries = [("weapon_1", i, s) for i, s in enumerate(w1)]
         entries += [("weapon_2", i, s) for i, s in enumerate(w2)]
         entries += [("reserve", i, s) for i, s in enumerate(reserve)]
@@ -374,17 +429,20 @@ class InventoryGUI:
         melee_panel = c.panel(pygame.Rect((328, 130), (300, 105)), container=self.inv_window)
         c.label(pygame.Rect((30, 244), (260, 24)), "Reserva de selos", container=self.inv_window)
         reserve_panel = c.scroll(pygame.Rect((28, 272), (600, 220)), container=self.inv_window)
-        details = c.panel(pygame.Rect((650, 90), (250, 400)), container=self.inv_window)
+        details = c.panel(pygame.Rect((640, 90), (280, 430)), container=self.inv_window)
 
         slot = 76
         gap = 12
 
-        def add_stamp_button(stamp, action_index, parent, pos, is_selected):
+        def add_stamp_button(stamp, action_index, parent, pos, is_selected, is_marked=False):
+            is_selected = is_selected or is_marked
             panel_oid = ObjectID(class_id="@selected_upgrade_panel" if is_selected else "#item_button")
             slot_panel = c.panel(pygame.Rect(pos, (slot, slot)), container=parent, object_id=panel_oid)
             if stamp:
                 surf = self._create_stamp_surface(stamp, (slot - 8, slot - 8))
                 c.image(pygame.Rect((4, 4), (slot - 8, slot - 8)), surf, container=slot_panel)
+                if is_marked:
+                    c.label(pygame.Rect((50, 50), (22, 18)), "V", container=slot_panel)
             btn_oid = ObjectID(class_id="@selected_upgrade_btn" if is_selected else "@upgrade_btn")
             btn = c.button(
                 pygame.Rect((0, 0), (slot, slot)),
@@ -415,73 +473,98 @@ class InventoryGUI:
                 reserve_panel,
                 (12 + col * (slot + gap), 12 + row * (slot + gap)),
                 selected == action_index,
+                reserve_index in sale_marks,
             )
 
         reserve_rows = (len(reserve) + 5) // 6
         reserve_content_height = 24 + max(1, reserve_rows) * (slot + gap)
         reserve_panel.set_scrollable_area_dimensions((580, reserve_content_height))
+        if selected >= reserve_offset and reserve:
+            selected_reserve_index = selected - reserve_offset
+            row = selected_reserve_index // 6
+            stamp_top = 12 + row * (slot + gap)
+            self._scroll_container_to_item(reserve_panel, stamp_top, slot, 220, reserve_content_height)
 
         if not entries:
             c.text_box(
-                pygame.Rect((12, 16), (226, 100)),
+                pygame.Rect((12, 16), (256, 120)),
                 "Selos aparecem como drops raros durante a partida.",
                 container=details,
             )
             return
 
         location, _, stamp = entries[selected]
-        c.label(pygame.Rect((12, 14), (226, 30)), stamp_display_name(stamp)[:30], container=details)
+        c.label(pygame.Rect((12, 14), (256, 30)), stamp_display_name(stamp)[:34], container=details)
         c.label(
-            pygame.Rect((12, 44), (226, 24)),
+            pygame.Rect((12, 44), (256, 24)),
             "Fragmento" if stamp.is_junk else f"Nivel {stamp.level}/{MAX_STAMP_LEVEL}",
             container=details,
         )
-        c.text_box(pygame.Rect((12, 78), (226, 124)), stamp_description(stamp), container=details)
+        c.text_box(pygame.Rect((12, 78), (256, 130)), stamp_description(stamp), container=details)
 
-        y = 218
+        y = 222
+        action_h = 30
+        action_gap = 34
         if location == "reserve" and not stamp.is_junk:
             self.inventory_action_buttons["stamp_equip_w1"] = c.button(
-                pygame.Rect((12, y), (226, 34)),
+                pygame.Rect((12, y), (256, action_h)),
                 "Equipar distancia",
                 container=details,
                 intent="secondary" if len(w1) < 3 else "muted",
             )
             if len(w1) >= 3:
                 self.inventory_action_buttons["stamp_equip_w1"].disable()
-            y += 40
+            y += action_gap
             self.inventory_action_buttons["stamp_equip_w2"] = c.button(
-                pygame.Rect((12, y), (226, 34)),
+                pygame.Rect((12, y), (256, action_h)),
                 "Equipar corpo a corpo",
                 container=details,
                 intent="secondary" if len(w2) < 3 else "muted",
             )
             if len(w2) >= 3:
                 self.inventory_action_buttons["stamp_equip_w2"].disable()
-            y += 40
+            y += action_gap
         elif location != "reserve":
             self.inventory_action_buttons["stamp_unequip"] = c.button(
-                pygame.Rect((12, y), (226, 34)),
+                pygame.Rect((12, y), (256, action_h)),
                 "Desequipar",
                 container=details,
                 intent="secondary",
             )
-            y += 40
+            y += action_gap
+
+        altar_kind = getattr(getattr(game, "active_altar", None), "kind", None)
+        can_upgrade_stamp = altar_kind == "stamps_altar"
+        can_black_market = altar_kind == "black_market_altar"
 
         self.inventory_action_buttons["stamp_fuse"] = c.button(
-            pygame.Rect((12, y), (226, 34)),
+            pygame.Rect((12, y), (256, action_h)),
             "Sacrificar 3 para upar",
             container=details,
-            intent="primary" if not stamp.is_max_level and len(reserve) >= 3 else "muted",
+            intent="primary" if can_upgrade_stamp and not stamp.is_max_level and len(reserve) >= 3 else "muted",
         )
-        if stamp.is_max_level or len(reserve) < 3:
+        if not can_upgrade_stamp or stamp.is_max_level or len(reserve) < 3:
             self.inventory_action_buttons["stamp_fuse"].disable()
-        y += 40
+        y += action_gap
 
-        if location == "reserve":
+        if can_black_market and location == "reserve":
             value = stamp_sell_value(stamp)
+            reserve_index = selected - reserve_offset
+            marked = reserve_index in sale_marks
             self.inventory_action_buttons["stamp_sell"] = c.button(
-                pygame.Rect((12, y), (226, 34)),
-                f"Vender ({value} pts)",
+                pygame.Rect((12, y), (256, action_h)),
+                "Desmarcar venda" if marked else f"Marcar venda ({value} pts)",
+                container=details,
+                intent="secondary" if marked else "danger",
+            )
+            y += action_gap
+
+        marked_stamps = [stamp for idx, stamp in enumerate(reserve) if idx in sale_marks]
+        if can_black_market and marked_stamps:
+            total = sum(stamp_sell_value(stamp) for stamp in marked_stamps)
+            self.inventory_action_buttons["stamp_sell_confirm"] = c.button(
+                pygame.Rect((12, y), (256, action_h)),
+                f"Vender {len(marked_stamps)} ({total} pts)",
                 container=details,
                 intent="danger",
             )
@@ -516,6 +599,8 @@ class InventoryGUI:
         import math
         surf = pygame.Surface(size, pygame.SRCALPHA)
         rect = pygame.Rect(0, 0, *size)
+        tier_color = "#FFD447" if item.is_relic else ("#D96CFF" if item.is_hybrid else arcade_theme.ITEM_ICON_STYLE.get(item.key, ("#28D7FF", ""))[0])
+        arcade_theme.draw_pixel_icon(surf, rect, item.key, color=tier_color)
         if item.is_relic:
             import time
             pulse = 0.5 + 0.5 * math.sin(time.time() * 4)
@@ -523,20 +608,17 @@ class InventoryGUI:
             pygame.draw.circle(surf, (250, 180, 50), rect.center, r)
             pygame.draw.circle(surf, (192, 132, 252), rect.center, int(r * 0.55))
         elif item.is_hybrid:
-            pygame.draw.circle(surf, hex_color(COLORS["upgrade"]), rect.center, rect.width // 3)
+            pygame.draw.rect(surf, hex_color(COLORS["upgrade"]), rect.inflate(-rect.width // 3, -rect.height // 3))
         else:
-            if item.key in self.item_icons:
-                icon = pygame.transform.scale(self.item_icons[item.key], (rect.width - 8, rect.height - 8))
-                surf.blit(icon, (rect.x + 4, rect.y + 4))
-            else:
-                pygame.draw.circle(surf, hex_color(COLORS["special"]), rect.center, rect.width // 3)
+            if item.key not in arcade_theme.ITEM_ICON_STYLE:
+                arcade_theme.draw_pixel_icon(surf, rect.inflate(-8, -8), item.key, color=COLORS["special"], label=item.key[:2])
 
         if not item.is_relic and not item.is_hybrid:
-            pygame.draw.rect(surf, (205, 127, 50), rect, width=2, border_radius=6)
+            pygame.draw.rect(surf, (205, 127, 50), rect, width=2)
         elif item.is_hybrid:
-            pygame.draw.rect(surf, (192, 192, 192), rect, width=2, border_radius=6)
+            pygame.draw.rect(surf, (192, 192, 192), rect, width=2)
         elif item.is_relic:
-            pygame.draw.rect(surf, (255, 215, 0), rect, width=2, border_radius=6)
+            pygame.draw.rect(surf, (255, 215, 0), rect, width=2)
 
         lvl_surf, l_rect = self.font_tiny.render(str(item.level), hex_color(COLORS["text"]))
         l_rect.bottomright = (rect.right - 2, rect.bottom - 2)
@@ -555,8 +637,18 @@ class InventoryGUI:
             inv = game.get_inventory(game.menu_player_index)
             if inv.is_item_synergized(item) and inv.is_active(item.slot_key):
                 import time
-                glow_pulse = int(140 + 115 * math.sin(time.time() * 7.5))
-                pygame.draw.rect(surf, (34, 211, 238, glow_pulse), rect, width=3, border_radius=6)
+                import math
+                pulse = (math.sin(time.time() * 8) + 1) / 2 # 0.0 to 1.0
+                
+                # Fundo piscante
+                bg_alpha = int(40 + 80 * pulse)
+                bg_surf = pygame.Surface(rect.size, pygame.SRCALPHA)
+                pygame.draw.rect(bg_surf, (34, 211, 238, bg_alpha), bg_surf.get_rect())
+                surf.blit(bg_surf, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+                
+                # Borda externa brilhante
+                border_alpha = int(100 + 155 * pulse)
+                pygame.draw.rect(surf, (34, 211, 238, border_alpha), rect, width=4)
             
         return surf
 
@@ -564,6 +656,8 @@ class InventoryGUI:
         surf = pygame.Surface(size, pygame.SRCALPHA)
         rect = pygame.Rect(0, 0, *size)
         color = hex_color(stamp_hud_color(stamp))
+        pygame.draw.rect(surf, (8, 12, 24), rect)
+        pygame.draw.rect(surf, color, rect, width=2)
         points = [
             (rect.centerx, rect.top + 4),
             (rect.right - 4, rect.centery),
@@ -571,7 +665,7 @@ class InventoryGUI:
             (rect.left + 4, rect.centery),
         ]
         pygame.draw.polygon(surf, color, points)
-        pygame.draw.polygon(surf, (255, 255, 255), points, width=2)
+        pygame.draw.polygon(surf, (255, 247, 214), points, width=2)
         label = "J" if stamp.is_junk else stamp.key[:2].upper()
         text_surf, text_rect = self.font_tiny.render(label, hex_color(COLORS["text"]))
         text_rect.center = rect.center
@@ -630,12 +724,11 @@ class InventoryGUI:
             if hasattr(self, 'point_confirm_window') and self.point_confirm_window:
                 self.point_confirm_window.kill()
                 
-            self.point_confirm_window = c.window(
+            self.point_confirm_window = c.arcade_window(
                 "CONFIRMAR ACAO",
                 (440, 250 if quantity_enabled else 200),
                 "#point_confirm",
                 y=SCREEN_HEIGHT // 2 - (125 if quantity_enabled else 100),
-                close_button=False
             )
             
             c.text_box(pygame.Rect((20, 10), (400, 62)), message, container=self.point_confirm_window)
@@ -713,12 +806,11 @@ class InventoryGUI:
             if hasattr(self, 'fusion_confirm_window') and self.fusion_confirm_window:
                 self.fusion_confirm_window.kill()
                 
-            self.fusion_confirm_window = c.window(
+            self.fusion_confirm_window = c.arcade_window(
                 "CONFIRMAR FUSAO",
                 (520, 320),
                 "#fusion_confirm",
                 y=SCREEN_HEIGHT // 2 - 160,
-                close_button=False
             )
             
             if success:
@@ -785,12 +877,11 @@ class InventoryGUI:
             if hasattr(self, "stamp_fusion_window") and self.stamp_fusion_window:
                 self.stamp_fusion_window.kill()
 
-            self.stamp_fusion_window = c.window(
+            self.stamp_fusion_window = c.arcade_window(
                 "FUSAO DE SELOS",
                 (560, 430),
                 "#stamp_fusion_confirm",
                 y=SCREEN_HEIGHT // 2 - 215,
-                close_button=False,
             )
             c.text_box(pygame.Rect((20, 14), (520, 58)), message, container=self.stamp_fusion_window)
             reserve_panel = c.scroll(pygame.Rect((20, 82), (520, 210)), container=self.stamp_fusion_window)
@@ -846,4 +937,3 @@ class InventoryGUI:
 
         self.draw_gui_layer()
         return []
-

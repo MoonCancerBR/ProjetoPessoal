@@ -2,8 +2,10 @@ from dataclasses import dataclass, field
 
 if __package__:
     from .constants import RELIC_DEFINITIONS
+    from .equipment_fusions import fusion_effect_keys, fusion_id_for_sources, fusion_tags, get_fusion_definition
 else:
     from Sobrevivencia.data.constants import RELIC_DEFINITIONS
+    from Sobrevivencia.data.equipment_fusions import fusion_effect_keys, fusion_id_for_sources, fusion_tags, get_fusion_definition
 
 
 MAX_ITEM_LEVEL = 10
@@ -52,7 +54,7 @@ def get_item_tags(item):
     if item.rank == 1:
         return [base_tags.get(item.key, "normal")]
     elif item.hybrid_sources:
-        return [base_tags.get(src, "normal") for src in item.hybrid_sources]
+        return fusion_tags(item)
     return ["normal"]
 
 
@@ -61,6 +63,7 @@ class InventoryItem:
     key: str
     level: int = 1
     hybrid_sources: tuple = field(default_factory=tuple)
+    fusion_id: str = ""
     timers: dict = field(default_factory=dict)
     slot_key: str = None
 
@@ -86,7 +89,7 @@ class InventoryItem:
 
     def effect_keys(self):
         if self.hybrid_sources:
-            return self.hybrid_sources
+            return fusion_effect_keys(self)
         return (self.key,)
 
 
@@ -274,7 +277,7 @@ class Inventory:
             other_keys = [k for k in BASE_ITEM_KEYS if k != item.key]
             other = rng.choice(other_keys)
             sources = tuple(sorted([item.key, other]))
-            hybrid_key = "hybrid:" + "+".join(sources)
+            hybrid_key = fusion_id_for_sources(sources)
 
             # Remove old
             self.items.pop(dict_key)
@@ -282,7 +285,7 @@ class Inventory:
                 self.active_slots.remove(dict_key)
 
             # Add new
-            new_item = InventoryItem(key=hybrid_key, level=1, hybrid_sources=sources, slot_key=hybrid_key)
+            new_item = InventoryItem(key=hybrid_key, level=1, hybrid_sources=sources, fusion_id=hybrid_key, slot_key=hybrid_key)
             self.items[new_item.slot_key] = new_item
             if len(self.active_slots) < MAX_ACTIVE_ITEMS:
                 self.active_slots.append(new_item.slot_key)
@@ -362,8 +365,8 @@ class Inventory:
             combined_sources = tuple(sorted(set(first.effect_keys() + second.effect_keys())))
 
         if first.rank == 1:
-            hybrid_key = "hybrid:" + "+".join(combined_sources)
-            hybrid = InventoryItem(key=hybrid_key, level=1, hybrid_sources=combined_sources, slot_key=hybrid_key)
+            hybrid_key = fusion_id_for_sources(combined_sources)
+            hybrid = InventoryItem(key=hybrid_key, level=1, hybrid_sources=combined_sources, fusion_id=hybrid_key, slot_key=hybrid_key)
             return True, hybrid, "Item hibrido sera criado."
 
         if first.rank == 2:
@@ -443,8 +446,7 @@ def item_display_name(item):
         relic_key = item.key[len("relic:"):]
         return RELIC_DEFINITIONS.get(relic_key, {}).get("name", "Reliquia Desconhecida")
     if item.is_hybrid:
-        names = [ITEM_DEFINITIONS[key]["name"] for key in item.hybrid_sources]
-        return "Hibrido: " + " + ".join(names)
+        return get_fusion_definition(item).name
     return ITEM_DEFINITIONS[item.key]["name"]
 
 
@@ -453,6 +455,5 @@ def item_short_description(item):
         relic_key = item.key[len("relic:"):]
         return RELIC_DEFINITIONS.get(relic_key, {}).get("description", "Aura de fogo giratoria.")
     if item.is_hybrid:
-        names = [ITEM_DEFINITIONS[key]["short"] for key in item.hybrid_sources]
-        return " + ".join(names) + " | extra: area e recarga"
+        return get_fusion_definition(item).description
     return ITEM_DEFINITIONS[item.key]["description"]
